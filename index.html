@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<title>Gym Core System</title>
+<link rel="stylesheet" href="index.css">
+</head>
+
+<body>
+
+<!-- ================= TOP BAR ================= -->
+<div class="topbar">
+
+    <div class="left">
+        <button onclick="openAdd()">➕ Client</button>
+        <button onclick="openSearch()">🔍 Căutare</button>
+        <button onclick="openSettings()">⚙️ Setări</button>
+        <button onclick="openReports()">📊 Rapoarte</button>
+    </div>
+
+    <div class="right">
+
+        <div id="userArea" onclick="toggleUserMenu()" style="display:none;">
+            👤 <span id="currentUser"></span>
+        </div>
+
+        <div id="userMenu" class="user-menu">
+            <button onclick="logout()">🚪 Logout</button>
+        </div>
+
+        <button id="loginBtn" onclick="openLogin()">🔐 Login</button>
+
+    </div>
+
+</div>
+
+<!-- ================= MAIN ================= -->
+<div class="container">
+
+    <!-- INTRARE / IEȘIRE -->
+    <div class="io-section">
+
+        <div class="panel entry">
+            <h2> Intrare</h2>
+            <div id="entryList"></div>
+        </div>
+
+        <div class="panel exit">
+            <h2> Ieșire</h2>
+            <div id="exitList"></div>
+        </div>
+
+    </div>
+
+    <!-- CLIENȚI ÎN SALĂ -->
+    <div class="panel gym">
+        <h2>🏋️ Clienți în sală</h2>
+        <div id="gymList" class="scroll"></div>
+    </div>
+
+</div>
+
+<!-- ================= ADD CLIENT ================= -->
+<div id="addModal" class="modal">
+  <div class="box scroll-box">
+
+    <h2>➕ Client nou</h2>
+
+    <input id="name" placeholder="Nume">
+    <input id="surname" placeholder="Prenume">
+
+    <!-- ABONAMENTE -->
+    <select id="subscription">
+        <option value="">Selectează abonament</option>
+
+        <optgroup label="Elevi">
+            <option value="elev_standard">Elev Standard (07-17)</option>
+            <option value="elev_full">Elev Full (07-21)</option>
+        </optgroup>
+
+        <optgroup label="Adulți">
+            <option value="adult_standard">Adult Standard (07-17)</option>
+            <option value="adult_full">Adult Full (07-21)</option>
+        </optgroup>
+
+        <optgroup label="Special">
+            <option value="2weeks">2 Săptămâni</option>
+        </optgroup>
+    </select>
+
+    <!-- CAMERA -->
+    <video id="video" autoplay></video>
+    <img id="preview">
+
+    <div class="photo-buttons">
+        <button onclick="capture()">📸 Fă poză</button>
+        <button onclick="startCamera()">🔄 Repornește</button>
+    </div>
+
+    <!-- TAG -->
+    <input id="tag" placeholder="Tag card">
+
+    <!-- BUTOANE -->
+    <div class="actions">
+        <button onclick="saveClient()">💾 Salvează</button>
+        <button onclick="closeAdd()">❌ Închide</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================= SEARCH ================= -->
+<div id="searchModal" class="modal">
+  <div class="box">
+
+    <h2>🔍 Caută client</h2>
+
+    <input id="search" placeholder="Scrie numele..." oninput="searchClient()">
+
+    <div id="results" class="scroll"></div>
+
+    <button onclick="closeSearch()">Închide</button>
+
+  </div>
+</div>
+
+<!-- ================= LOGIN ================= -->
+<div id="loginModal" class="modal">
+  <div class="box">
+
+    <h2>🔐 Login</h2>
+
+    <input id="loginUser" placeholder="User">
+
+    <div style="display:flex; gap:5px;">
+        <input id="loginCode" type="password" placeholder="Cod">
+        <button onclick="togglePassword()">👁</button>
+    </div>
+
+    <div id="loginError"></div>
+
+    <button onclick="login()">✔ Login</button>
+    <button onclick="closeLogin()">❌ Închide</button>
+
+  </div>
+</div>
+<script src="index.js"></script>
+</body>
+</html>
