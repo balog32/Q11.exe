@@ -148,7 +148,7 @@ body::before {
     transform: translateY(-1px) scale(1.02);
 }
 
-/* LOGIN */
+/* LOGIN BUTTON */
 #loginBtn {
     background: linear-gradient(145deg, #4a90e2, #357abd);
     box-shadow:
@@ -165,7 +165,7 @@ body::before {
         inset 0 -2px 8px rgba(0, 0, 0, 0.3);
 }
 
-/* USER */
+/* USER AREA */
 #userArea {
     background: linear-gradient(145deg, rgba(255, 140, 0, 0.2), rgba(255, 106, 0, 0.1));
     padding: 12px 24px;
@@ -210,7 +210,7 @@ body::before {
 .container {
     padding: 24px 40px;
     display: grid;
-    grid-template-rows: 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 24px;
     min-height: calc(100vh - 200px);
     background: transparent;
@@ -218,11 +218,17 @@ body::before {
     z-index: 2;
 }
 
-/* ================= INTRARE / IESIRE ================= */
-.io-section {
+.left-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.right-panel {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
     gap: 24px;
+    height: 100%;
 }
 
 /* ================= PANELS ================= */
@@ -315,12 +321,14 @@ body::before {
 /* ================= GYM LIST ================= */
 .gym {
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .scroll {
     overflow-y: auto;
-    height: 100%;
     padding-right: 8px;
+    flex: 1;
 }
 
 .scroll::-webkit-scrollbar {
@@ -341,6 +349,35 @@ body::before {
 .scroll::-webkit-scrollbar-thumb:hover {
     background: linear-gradient(180deg, #ffaa33, #ffbb55);
     box-shadow: 0 0 15px rgba(255, 140, 0, 0.6);
+}
+
+/* ================= GYM COUNTER ================= */
+.gym-counter {
+    padding: 14px 16px;
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.15) 0%, rgba(0, 255, 136, 0.05) 100%);
+    border-top: 2px solid rgba(0, 255, 136, 0.4);
+    text-align: center;
+    color: #00ff88;
+    font-weight: bold;
+    border-radius: 0 0 14px 14px;
+    font-size: 14px;
+    letter-spacing: 1px;
+}
+
+.gym-counter strong {
+    font-size: 22px;
+    color: #00ff88;
+}
+
+/* ================= ENTRY/EXIT CONTAINERS ================= */
+.entry-container,
+.exit-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 16px;
+    min-height: 150px;
 }
 
 /* ================= CLIENT CARD ================= */
@@ -503,7 +540,7 @@ input, select {
     border-radius: 10px;
     border: 2px solid rgba(255, 140, 0, 0.2);
     background: linear-gradient(145deg, rgba(45, 63, 95, 0.8), rgba(30, 41, 59, 0.8));
-    color: #be1b1b;
+    color: #e0e0e0;
     font-size: 14px;
     transition: 0.3s ease;
     font-weight: 500;
@@ -666,6 +703,28 @@ video, img {
 }
 
 /* ================= RESPONSIVE ================= */
+@media (max-width: 1200px) {
+    .container {
+        gap: 16px;
+    }
+
+    .left-panel, .right-panel {
+        min-height: auto;
+    }
+}
+
+@media (max-width: 1024px) {
+    .container {
+        grid-template-columns: 1fr;
+        gap: 16px;
+        min-height: auto;
+    }
+    
+    .right-panel {
+        grid-template-rows: auto auto;
+    }
+}
+
 @media (max-width: 768px) {
     body {
         background-size: cover;

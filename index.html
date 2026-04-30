@@ -34,33 +34,40 @@
 
 </div>
 
-<!-- ================= MAIN ================= -->
+<!-- ================= MAIN CONTAINER ================= -->
 <div class="container">
 
-    <!-- INTRARE / IEȘIRE -->
-    <div class="io-section">
-
-        <div class="panel entry">
-            <h2> Intrare</h2>
-            <div id="entryList"></div>
+    <!-- STÂNGA: CLIENȚI ÎN SALĂ -->
+    <div class="left-panel">
+        <div class="panel gym">
+            <h2>🏋️ Clienți în sală</h2>
+            <div id="gymList" class="scroll"></div>
+            <div class="gym-counter">
+                <strong id="gymCount">0</strong> persoane în sală
+            </div>
         </div>
-
-        <div class="panel exit">
-            <h2> Ieșire</h2>
-            <div id="exitList"></div>
-        </div>
-
     </div>
 
-    <!-- CLIENȚI ÎN SALĂ -->
-    <div class="panel gym">
-        <h2>🏋️ Clienți în sală</h2>
-        <div id="gymList" class="scroll"></div>
+    <!-- DREAPTA: INTRARE / IEȘIRE -->
+    <div class="right-panel">
+        
+        <!-- TOP: INTRARE -->
+        <div class="panel entry">
+            <h2>⬆️ INTRARE</h2>
+            <div id="entryList" class="entry-container"></div>
+        </div>
+
+        <!-- BOTTOM: IEȘIRE -->
+        <div class="panel exit">
+            <h2>⬇️ IEȘIRE</h2>
+            <div id="exitList" class="exit-container"></div>
+        </div>
+
     </div>
 
 </div>
 
-<!-- ================= ADD CLIENT ================= -->
+<!-- ================= ADD CLIENT MODAL ================= -->
 <div id="addModal" class="modal">
   <div class="box scroll-box">
 
@@ -109,7 +116,7 @@
   </div>
 </div>
 
-<!-- ================= SEARCH ================= -->
+<!-- ================= SEARCH CLIENT MODAL ================= -->
 <div id="searchModal" class="modal">
   <div class="box">
 
@@ -124,7 +131,7 @@
   </div>
 </div>
 
-<!-- ================= LOGIN ================= -->
+<!-- ================= LOGIN MODAL ================= -->
 <div id="loginModal" class="modal">
   <div class="box">
 
@@ -144,6 +151,7 @@
 
   </div>
 </div>
+
 <script src="index.js"></script>
 </body>
 </html>
