@@ -23,7 +23,6 @@ body {
     position: relative;
 }
 
-/* Overlay pe toata pagina pentru contrast */
 body::before {
     content: '';
     position: fixed;
@@ -73,13 +72,7 @@ body::before {
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(90deg, 
-        transparent,
-        #ff8c00 20%,
-        #ff6a00 50%,
-        #ff8c00 80%,
-        transparent
-    );
+    background: linear-gradient(90deg, transparent, #ff8c00 20%, #ff6a00 50%, #ff8c00 80%, transparent);
     box-shadow: 0 0 20px rgba(255, 140, 0, 0.6);
 }
 
@@ -109,10 +102,7 @@ body::before {
     cursor: pointer;
     background: linear-gradient(145deg, #ff8c00, #ffaa33);
     color: #fff;
-    box-shadow:
-        0 6px 20px rgba(255, 140, 0, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.3),
-        inset 0 -2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 6px 20px rgba(255, 140, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -2px 8px rgba(0, 0, 0, 0.2);
     transition: 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -137,10 +127,7 @@ body::before {
 
 .topbar button:hover {
     transform: translateY(-3px) scale(1.05);
-    box-shadow:
-        0 10px 30px rgba(255, 140, 0, 0.6),
-        inset 0 1px 0 rgba(255, 255, 255, 0.4),
-        inset 0 -2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 10px 30px rgba(255, 140, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -2px 8px rgba(0, 0, 0, 0.3);
     background: linear-gradient(145deg, #ffaa33, #ffbb55);
 }
 
@@ -148,24 +135,16 @@ body::before {
     transform: translateY(-1px) scale(1.02);
 }
 
-/* LOGIN BUTTON */
 #loginBtn {
     background: linear-gradient(145deg, #4a90e2, #357abd);
-    box-shadow:
-        0 6px 20px rgba(74, 144, 226, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.3),
-        inset 0 -2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -2px 8px rgba(0, 0, 0, 0.2);
 }
 
 #loginBtn:hover {
     background: linear-gradient(145deg, #5ba3f5, #4a90e2);
-    box-shadow:
-        0 10px 30px rgba(74, 144, 226, 0.6),
-        inset 0 1px 0 rgba(255, 255, 255, 0.4),
-        inset 0 -2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 10px 30px rgba(74, 144, 226, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -2px 8px rgba(0, 0, 0, 0.3);
 }
 
-/* USER AREA */
 #userArea {
     background: linear-gradient(145deg, rgba(255, 140, 0, 0.2), rgba(255, 106, 0, 0.1));
     padding: 12px 24px;
@@ -173,9 +152,7 @@ body::before {
     color: #ffaa33;
     font-weight: 700;
     border: 2px solid rgba(255, 140, 0, 0.4);
-    box-shadow: 
-        0 6px 20px rgba(255, 140, 0, 0.25),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    box-shadow: 0 6px 20px rgba(255, 140, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1);
     transition: 0.3s ease;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -183,25 +160,9 @@ body::before {
     position: relative;
 }
 
-#userArea::before {
-    content: '';
-    position: absolute;
-    top: -2px;
-    left: -2px;
-    right: -2px;
-    bottom: -2px;
-    background: linear-gradient(45deg, #ff8c00, #ffaa33, #ff8c00);
-    border-radius: 12px;
-    opacity: 0;
-    z-index: -1;
-    transition: opacity 0.3s ease;
-}
-
 #userArea:hover {
     background: linear-gradient(145deg, rgba(255, 140, 0, 0.3), rgba(255, 106, 0, 0.2));
-    box-shadow: 
-        0 8px 25px rgba(255, 140, 0, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    box-shadow: 0 8px 25px rgba(255, 140, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
     border-color: rgba(255, 140, 0, 0.6);
     transform: scale(1.05);
 }
@@ -300,12 +261,9 @@ body::before {
 }
 
 @keyframes slideRight {
-    to {
-        width: 100%;
-    }
+    to { width: 100%; }
 }
 
-/* ENTRY / EXIT */
 .entry {
     border-left: 8px solid #00ff88;
     border-top: 2px solid rgba(0, 255, 136, 0.3);
@@ -318,7 +276,6 @@ body::before {
     background: linear-gradient(135deg, rgba(255, 107, 107, 0.05) 0%, transparent 100%);
 }
 
-/* ================= GYM LIST ================= */
 .gym {
     overflow: hidden;
     display: flex;
@@ -437,7 +394,6 @@ body::before {
     transform: scale(1.08);
 }
 
-/* STATUS */
 .active {
     border-left: 6px solid #00ff88 !important;
     border-top: none !important;
@@ -474,15 +430,10 @@ body::before {
 }
 
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
-/* BOX */
 .box {
     background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 27, 46, 0.95) 100%);
     color: #bdbbbb;
@@ -513,7 +464,6 @@ body::before {
     }
 }
 
-/* SCROLL FIX */
 .scroll-box {
     max-height: 80vh;
     overflow-y: auto;
@@ -534,7 +484,6 @@ body::before {
     border-radius: 10px;
 }
 
-/* INPUT */
 input, select {
     padding: 12px 14px;
     border-radius: 10px;
@@ -550,9 +499,7 @@ input, select {
 input:focus, select:focus {
     outline: none;
     border-color: rgba(255, 140, 0, 0.6);
-    box-shadow: 
-        0 0 20px rgba(255, 140, 0, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    box-shadow: 0 0 20px rgba(255, 140, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
     background: linear-gradient(145deg, rgba(61, 79, 111, 0.9), rgba(46, 61, 79, 0.9));
     transform: scale(1.02);
 }
@@ -561,18 +508,6 @@ input::placeholder {
     color: #888;
 }
 
-/* CAMERA */
-video, img {
-    width: 100%;
-    height: 220px;
-    border-radius: 14px;
-    background: #0f1b2e;
-    object-fit: cover;
-    border: 2px solid rgba(255, 140, 0, 0.25);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-}
-
-/* BUTTONS MODAL */
 .box button {
     padding: 14px;
     border-radius: 12px;
@@ -615,7 +550,6 @@ video, img {
     transform: translateY(-1px);
 }
 
-/* GROUPS */
 .photo-buttons,
 .actions {
     display: flex;
@@ -703,21 +637,10 @@ video, img {
 }
 
 /* ================= RESPONSIVE ================= */
-@media (max-width: 1200px) {
-    .container {
-        gap: 16px;
-    }
-
-    .left-panel, .right-panel {
-        min-height: auto;
-    }
-}
-
 @media (max-width: 1024px) {
     .container {
         grid-template-columns: 1fr;
         gap: 16px;
-        min-height: auto;
     }
     
     .right-panel {
@@ -726,15 +649,6 @@ video, img {
 }
 
 @media (max-width: 768px) {
-    body {
-        background-size: cover;
-        background-position: center;
-    }
-
-    body::before {
-        background: linear-gradient(180deg, rgba(15, 15, 15, 0.6) 0%, rgba(26, 26, 46, 0.7) 100%);
-    }
-
     .topbar {
         padding: 15px 20px;
         flex-direction: column;
@@ -746,6 +660,7 @@ video, img {
     .left, .right {
         width: 100%;
         gap: 12px;
+        flex-wrap: wrap;
     }
 
     .right {
@@ -758,18 +673,9 @@ video, img {
         min-height: auto;
     }
 
-    .io-section {
-        grid-template-columns: 1fr;
-    }
-
     .box {
         width: 95%;
         padding: 24px;
-    }
-
-    .user-menu {
-        right: 20px;
-        top: 60px;
     }
 
     .topbar button {

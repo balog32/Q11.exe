@@ -2,8 +2,10 @@
 <html lang="ro">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gym Core System</title>
 <link rel="stylesheet" href="index.css">
+<script src="nfc-integration.js"></script>
 </head>
 
 <body>
@@ -19,6 +21,22 @@
     </div>
 
     <div class="right">
+
+        <div id="nfc-status" style="
+            padding: 10px 16px;
+            border-radius: 8px;
+            background: rgba(100, 150, 255, 0.2);
+            color: #ffaa00;
+            font-weight: bold;
+            font-size: 12px;
+            border: 2px solid rgba(100, 150, 255, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: 0.3s ease;
+        ">
+            🟡 NFC Standby
+        </div>
 
         <div id="userArea" onclick="toggleUserMenu()" style="display:none;">
             👤 <span id="currentUser"></span>
@@ -67,7 +85,9 @@
 
 </div>
 
-<!-- ================= ADD CLIENT MODAL ================= -->
+<!-- ================= MODALS ================= -->
+
+<!-- ADD CLIENT -->
 <div id="addModal" class="modal">
   <div class="box scroll-box">
 
@@ -95,17 +115,26 @@
         </optgroup>
     </select>
 
+    <!-- PERIOADA PERSONALIZATA -->
+    <div style="background: rgba(100, 150, 255, 0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #6496ff;">
+        <label style="color: #6496ff; font-weight: bold; display: block; margin-bottom: 8px;">📅 Perioada valabilitate (zile):</label>
+        <input type="number" id="customDays" placeholder="30" min="1" max="365" value="30" style="width: 100%; padding: 10px; border: 2px solid #6496ff; border-radius: 8px; background: rgba(100, 150, 255, 0.1); color: #e0e0e0;">
+    </div>
+
     <!-- CAMERA -->
-    <video id="video" autoplay></video>
-    <img id="preview">
+    <video id="video" autoplay playsinline style="width: 100%; height: 220px; border-radius: 14px; background: #0f1b2e; border: 2px solid rgba(255, 140, 0, 0.25); object-fit: cover;"></video>
+    <img id="preview" style="display: none; width: 100%; height: 220px; border-radius: 14px; background: #0f1b2e; border: 2px solid rgba(255, 140, 0, 0.25); object-fit: cover;">
 
     <div class="photo-buttons">
         <button onclick="capture()">📸 Fă poză</button>
         <button onclick="startCamera()">🔄 Repornește</button>
     </div>
 
-    <!-- TAG -->
-    <input id="tag" placeholder="Tag card">
+    <!-- TAG / NFC CARD -->
+    <div style="background: rgba(0, 255, 136, 0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #00ff88;">
+        <label style="color: #00ff88; font-weight: bold; display: block; margin-bottom: 8px;">🏷️ Tag NFC (scanează sau introdu manual):</label>
+        <input id="tag" placeholder="Scanează tagul NFC..." style="width: 100%; border: 2px solid rgba(0, 255, 136, 0.4); background: rgba(0, 255, 136, 0.1);">
+    </div>
 
     <!-- BUTOANE -->
     <div class="actions">
@@ -116,13 +145,13 @@
   </div>
 </div>
 
-<!-- ================= SEARCH CLIENT MODAL ================= -->
+<!-- SEARCH CLIENT -->
 <div id="searchModal" class="modal">
   <div class="box">
 
     <h2>🔍 Caută client</h2>
 
-    <input id="search" placeholder="Scrie numele..." oninput="searchClient()">
+    <input id="search" placeholder="Scrie numele sau scanează NFC..." oninput="searchClient()">
 
     <div id="results" class="scroll"></div>
 
@@ -131,7 +160,7 @@
   </div>
 </div>
 
-<!-- ================= LOGIN MODAL ================= -->
+<!-- LOGIN -->
 <div id="loginModal" class="modal">
   <div class="box">
 

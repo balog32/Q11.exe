@@ -1,7 +1,58 @@
 // ╔═══════════════════════════════════════════════════════════════════╗
 // ║                     GYM CORE SYSTEM - v5.0                        ║
-// ║                    FULL FIX - ALL BUGS RESOLVED                   ║
+// ║                    WITH NFC CARD READER                           ║
 // ╚═══════════════════════════════════════════════════════════════════╝
+
+//cititor //
+//cititor //
+const nfcSocket = new WebSocket("ws://localhost:8080");
+
+nfcSocket.onmessage = (event) => {
+    const tag = event.data;
+    const client = clients.find(c => c.tag === tag);
+
+    if (!client) {
+        showNotification("Client negăsit!", "error");
+        return;
+    }
+
+    if (client.nfcScansToday === undefined) client.nfcScansToday = 0;
+    if (client.isInGym === undefined) client.isInGym = false;
+
+    const today = getTodayDate();
+
+    if (client.lastScanDate !== today) {
+        client.nfcScansToday = 0;
+        client.isInGym = false;
+        client.lastScanDate = today;
+    }
+
+    client.nfcScansToday++;
+    client.lastScanTimestamp = Date.now(); // ← SALVEAZĂ TIMPUL SCANĂRII
+
+    // 1 SCAN → INTRARE
+    if (client.nfcScansToday === 1) {
+        client.isInGym = true;
+        client.usedToday = true;
+        showNotification(`${client.prenume} a intrat în sală!`, "success");
+    }
+
+    // 2 SCAN → IEȘIRE
+    else if (client.nfcScansToday === 2) {
+        client.isInGym = false;
+        showNotification(`${client.prenume} a ieșit din sală!`, "success");
+    }
+
+    // 3+ SCAN → RE-ENTRY (FORȚAT ÎN SALĂ)
+    else {
+        client.isInGym = true;
+        showNotification("Abonament folosit azi!", "error");
+    }
+
+    saveClientsToStorage();
+    saveCheckIns();
+    initClientCards(); // ← REAFIȘEAZĂ DUPĂ FIECARE SCAN
+};
 
 // ════════════════════════════════════════════════════════════════════
 // ✅ VARIABILE GLOBALE
@@ -19,9 +70,6 @@ let users = JSON.parse(localStorage.getItem('users')) || [
     { id: 2, username: 'manager', code: '1234', role: 'manager', name: 'Manager', createdAt: new Date().toISOString() },
     { id: 3, username: 'staff', code: '1234', role: 'staff', name: 'Staff', createdAt: new Date().toISOString() }
 ];
-
-let scannedCardNumber = '';
-let cardReaderBuffer = '';
 
 const SUBSCRIPTIONS = {
     'elev_standard': { name: 'Elev Standard', duration: 30, startHour: 7, endHour: 17, endHourStrict: 16, endMinuteStrict: 40, category: 'Elev', type: 'Standard' },
@@ -266,7 +314,7 @@ function startCamera() {
             currentCameraStream = stream;
             video.srcObject = stream;
             video.style.display = 'block';
-            video.play();
+            video.play().catch(err => console.error('Play error:', err));
         })
         .catch(err => {
             console.error('Camera error:', err);
@@ -717,9 +765,7 @@ function checkClientAccess(client) {
     const expirationDate = new Date(client.expiration);
     const subInfo = SUBSCRIPTIONS[client.subscription];
     
-    if (client.usedToday) {
-        return { allowed: false, message: 'Folosit azi', status: 'expired' };
-    }
+
     if (!client.isPaid) {
         return { allowed: false, message: 'Neachitat', status: 'expired' };
     }
@@ -763,8 +809,9 @@ function getStatusClass(client) {
     const access = checkClientAccess(client);
     if (!access.allowed) return 'expired';
     if (access.status === 'warning') return 'warning';
-    return 'active';
+    return 'active' ;
 }
+
 
 // ════════════════════════════════════════════════════════════════════
 // 🎴 CLIENT CARDS DISPLAY
@@ -779,56 +826,74 @@ function initClientCards() {
         return;
     }
 
-    const allowedClients = clients.filter(c => checkClientAccess(c).allowed && !c.usedToday);
-    const deniedClients = clients.filter(c => !checkClientAccess(c).allowed);
-    const inGymClients = clients.filter(c => c.usedToday);
-
-    // INTRARE
+    // INTRARE - găsește ULTIMUL client care a scanat (bazat pe lastScanTimestamp)
+    const entryClients = clients.filter(c => c.nfcScansToday === 1 || c.nfcScansToday >= 3);
+    
+    // Sortează descendent după timestamp (ultimul primul)
+    const sortedEntry = [...entryClients].sort((a, b) => {
+        return (b.lastScanTimestamp || 0) - (a.lastScanTimestamp || 0);
+    });
+    
+    const latestEntry = sortedEntry[0];
+    
     const entryList = document.getElementById('entryList');
-    if (allowedClients.length === 0) {
-        entryList.innerHTML = '<p style="color: #888;">Niciun client gata</p>';
+    if (!latestEntry) {
+        entryList.innerHTML = '<p style="color: #888;">Niciun client la intrare</p>';
     } else {
-        const latest = allowedClients[0];
+        const daysLeft = getDaysLeft(latestEntry.expiration);
+        const expDate = new Date(latestEntry.expiration).toLocaleDateString('ro-RO');
+        const isReEntry = latestEntry.nfcScansToday >= 3;
         entryList.innerHTML = `
-            <div class="client-card active" onclick="onClientClick(${latest.id}, true)" style="cursor: pointer; padding: 16px; display: flex; gap: 15px; width: 100%;">
-                <div style="min-width: 80px;">
-                    ${latest.photo ? `<img src="${latest.photo}" style="width: 80px; height: 80px; border-radius: 10px; border: 3px solid #00ff88; object-fit: cover;">` : '<div style="width: 80px; height: 80px; background: #333; border-radius: 10px; display: flex; align-items: center; justify-content: center;"><span style="font-size: 40px;">👤</span></div>'}
+            <div class="client-card ${isReEntry ? 'warning' : 'active'}" onclick="onClientClick(${latestEntry.id}, true)" style="cursor: pointer; margin-bottom: 12px;">
+                <div style="min-width: 60px;">
+                    ${latestEntry.photo ? `<img src="${latestEntry.photo}" style="width: 60px; height: 60px; border-radius: 8px; border: 3px solid ${isReEntry ? '#ffaa00' : '#00ff88'}; object-fit: cover;">` : '<div style="width: 60px; height: 60px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center;"><span>👤</span></div>'}
                 </div>
                 <div style="flex: 1;">
-                    <p style="font-weight: bold; font-size: 18px; margin: 0; color: #fff;">${latest.prenume} ${latest.nume}</p>
-                    <p style="color: #00ff88; margin: 5px 0; font-weight: bold;">GATA DE INTRARE</p>
+                    <p style="font-weight: bold; margin: 0; color: #fff;">${latestEntry.prenume} ${latestEntry.nume}</p>
+                    <p style="font-size: 11px; color: ${isReEntry ? '#ffaa00' : '#00ff88'}; margin: 3px 0;">${isReEntry ? '⚠️ REINTRARE' : '✅ INTRARE'}</p>
+                    <p style="font-size: 10px; color: #ffaa33; margin: 2px 0;">Expiră: ${expDate} (${daysLeft} zile)</p>
                 </div>
             </div>
         `;
     }
 
-    // IESIRE
+    // IEȘIRE - găsește ULTIMUL client care a ieșit (scan 2)
+    const exitClients = clients.filter(c => c.nfcScansToday === 2 && c.isInGym === false);
+    const sortedExit = [...exitClients].sort((a, b) => {
+        return (b.lastScanTimestamp || 0) - (a.lastScanTimestamp || 0);
+    });
+    const latestExit = sortedExit[0];
+    
     const exitList = document.getElementById('exitList');
-    if (deniedClients.length === 0) {
-        exitList.innerHTML = '<p style="color: #888;">Niciun client blocat</p>';
+    if (!latestExit) {
+        exitList.innerHTML = '<p style="color: #888;">Niciun client la ieșire</p>';
     } else {
-        const latest = deniedClients[0];
-        const access = checkClientAccess(latest);
+        const daysLeft = getDaysLeft(latestExit.expiration);
+        const expDate = new Date(latestExit.expiration).toLocaleDateString('ro-RO');
         exitList.innerHTML = `
-            <div class="client-card expired" onclick="onClientClick(${latest.id}, false)" style="cursor: pointer; padding: 16px; display: flex; gap: 15px; width: 100%;">
-                <div style="min-width: 80px;">
-                    ${latest.photo ? `<img src="${latest.photo}" style="width: 80px; height: 80px; border-radius: 10px; border: 3px solid #ff6b6b; object-fit: cover;">` : '<div style="width: 80px; height: 80px; background: #333; border-radius: 10px; display: flex; align-items: center; justify-content: center;"><span style="font-size: 40px;">👤</span></div>'}
+            <div class="client-card active" onclick="onClientClick(${latestExit.id}, false)" style="cursor: pointer; margin-bottom: 12px;">
+                <div style="min-width: 60px;">
+                    ${latestExit.photo ? `<img src="${latestExit.photo}" style="width: 60px; height: 60px; border-radius: 8px; border: 3px solid #6496ff; object-fit: cover;">` : '<div style="width: 60px; height: 60px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center;"><span>👤</span></div>'}
                 </div>
                 <div style="flex: 1;">
-                    <p style="font-weight: bold; font-size: 18px; margin: 0; color: #fff;">${latest.prenume} ${latest.nume}</p>
-                    <p style="color: #ff6b6b; margin: 5px 0; font-weight: bold;">${access.message}</p>
+                    <p style="font-weight: bold; margin: 0; color: #fff;">${latestExit.prenume} ${latestExit.nume}</p>
+                    <p style="font-size: 11px; color: #6496ff; margin: 3px 0;">❌ IEȘIRE</p>
+                    <p style="font-size: 10px; color: #ffaa33; margin: 2px 0;">Expiră: ${expDate} (${daysLeft} zile)</p>
                 </div>
             </div>
         `;
     }
 
-    // GYM LIST
+    // CLIENȚI ÎN SALĂ - DOAR cei cu scan 1 (intrați normal)
+    const inGymClients = clients.filter(c => c.isInGym === true && c.nfcScansToday === 1);
     const gymList = document.getElementById('gymList');
     if (inGymClients.length === 0) {
-        gymList.innerHTML = '<p style="color: #888; text-align: center;">Sala este goala</p>';
+        gymList.innerHTML = '<p style="color: #888; text-align: center;">Sala este goală</p>';
     } else {
         gymList.innerHTML = inGymClients.map(client => {
             const checkInTime = clientCheckIns[client.id] ? new Date(clientCheckIns[client.id]).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+            const daysLeft = getDaysLeft(client.expiration);
+            const expDate = new Date(client.expiration).toLocaleDateString('ro-RO');
             return `
                 <div class="client-card ${getStatusClass(client)}" onclick="onClientClick(${client.id}, false)" style="cursor: pointer; margin-bottom: 12px;">
                     <div style="min-width: 60px;">
@@ -837,6 +902,7 @@ function initClientCards() {
                     <div style="flex: 1;">
                         <p style="font-weight: bold; margin: 0; color: #fff;">${client.prenume} ${client.nume}</p>
                         <p style="font-size: 11px; color: #00ff88; margin: 3px 0;">⏰ ${checkInTime}</p>
+                        <p style="font-size: 10px; color: #ffaa33; margin: 2px 0;">Expiră: ${expDate} (${daysLeft} zile)</p>
                     </div>
                 </div>
             `;
@@ -855,8 +921,7 @@ function onClientClick(clientId, isAllowed) {
         showClientDetails(client);
     }
 }
-
-// ══��═════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // ✅ CHECK IN
 // ════════════════════════════════════════════════════════════════════
 
@@ -914,6 +979,7 @@ function showClientDetails(clientOrId) {
                 <p><strong>Expira:</strong> ${new Date(client.expiration).toLocaleDateString('ro-RO')}</p>
                 <p><strong>Zile ramase:</strong> ${daysLeft >= 0 ? daysLeft : 0}</p>
                 <p><strong>Status:</strong> ${access.message}</p>
+                <p><strong>Tag:</strong> ${client.tag || 'N/A'}</p>
             </div>
 
             <div class="actions" style="flex-wrap: wrap;">
@@ -930,12 +996,22 @@ function showClientDetails(clientOrId) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// ✏️ EDIT CLIENT - FIXED CAMERA
+// ✏️ EDIT CLIENT
+// ════════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════════
+// ✏️ EDIT CLIENT - VERSIUNE CORECTATĂ
 // ════════════════════════════════════════════════════════════════════
 
 function editClient(clientId) {
     const client = clients.find(c => c.id === clientId);
     if (!client) return;
+
+    // Funcție pentru a escapa caracterele speciale
+    const escapeHtml = (str) => {
+        if (!str) return '';
+        return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    };
 
     const html = `
         <div class="box scroll-box">
@@ -948,20 +1024,22 @@ function editClient(clientId) {
                 </div>
                 <video id="editCameraVideo" style="display: none; width: 100%; height: 150px; border-radius: 8px; margin-bottom: 10px; background: #000;"></video>
                 <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <button id="startEditCamBtn" onclick="editStartCamera(${clientId})" style="flex: 1; padding: 10px; background: #ff8c00; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold;">Camera</button>
-                    <button onclick="deletePhoto(${clientId})" style="flex: 1; padding: 10px; background: #ff6b6b; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold;">Sterge Foto</button>
+                    <button type="button" id="startEditCamBtn" onclick="editStartCamera(${clientId})" style="flex: 1; padding: 10px; background: #ff8c00; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold;">Camera</button>
+                    <button type="button" onclick="deletePhoto(${clientId})" style="flex: 1; padding: 10px; background: #ff6b6b; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold;">Sterge Foto</button>
                 </div>
-                <button id="captureEditBtn" onclick="editCapturePhoto(${clientId})" style="width: 100%; padding: 10px; background: #00ff88; color: black; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; display: none;">Captureaaza Foto</button>
+                <button type="button" id="captureEditBtn" onclick="editCapturePhoto(${clientId})" style="width: 100%; padding: 10px; background: #00ff88; color: black; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; display: none;">Captureaaza Foto</button>
             </div>
 
             <p style="color: #ffaa33; font-weight: bold; margin-bottom: 10px;">DATE</p>
-            <input type="text" id="editNume" placeholder="Nume" value="${client.nume}" style="width: 100%; margin-bottom: 10px; padding: 10px; border: 2px solid #ffaa33; border-radius: 8px; background: rgba(255, 140, 0, 0.1); color: #e0e0e0;">
-            <input type="text" id="editPrenume" placeholder="Prenume" value="${client.prenume}" style="width: 100%; margin-bottom: 10px; padding: 10px; border: 2px solid #ffaa33; border-radius: 8px; background: rgba(255, 140, 0, 0.1); color: #e0e0e0;">
-            <input type="text" id="editTag" placeholder="Tag card" value="${client.tag}" style="width: 100%; margin-bottom: 15px; padding: 10px; border: 2px solid #ffaa33; border-radius: 8px; background: rgba(255, 140, 0, 0.1); color: #e0e0e0;">
+            <input type="text" id="editNume" placeholder="Nume" value="${escapeHtml(client.nume)}" style="width: 100%; margin-bottom: 10px; padding: 10px; border: 2px solid #ffaa33; border-radius: 8px; background: rgba(255, 140, 0, 0.1); color: #e0e0e0;">
+            <input type="text" id="editPrenume" placeholder="Prenume" value="${escapeHtml(client.prenume)}" style="width: 100%; margin-bottom: 10px; padding: 10px; border: 2px solid #ffaa33; border-radius: 8px; background: rgba(255, 140, 0, 0.1); color: #e0e0e0;">
+            
+            <p style="color: #00ff88; font-weight: bold; margin: 10px 0 5px 0;">TAG CARD NFC</p>
+            <input type="text" id="editTag" placeholder="Tag card (NFC)" value="${escapeHtml(client.tag)}" style="width: 100%; margin-bottom: 15px; padding: 10px; border: 2px solid #00ff88; border-radius: 8px; background: rgba(0, 255, 136, 0.1); color: #e0e0e0; font-family: monospace; font-size: 14px;">
 
             <div class="actions">
-                <button onclick="saveEditClient(${clientId})" style="flex: 1;">Salveaza</button>
-                <button onclick="showClientDetails(${clientId})" style="flex: 1;">Anuleaza</button>
+                <button type="button" onclick="saveEditClient(${clientId})" style="flex: 1;">Salveaza</button>
+                <button type="button" onclick="showClientDetails(${clientId})" style="flex: 1;">Anuleaza</button>
             </div>
         </div>
     `;
@@ -969,79 +1047,27 @@ function editClient(clientId) {
     openModal(html);
 }
 
-function editStartCamera(clientId) {
-    const video = document.getElementById('editCameraVideo');
-    const startBtn = document.getElementById('startEditCamBtn');
-    const captureBtn = document.getElementById('captureEditBtn');
+function saveEditClient(clientId) {
+    console.log('=== SALVARE CLIENT ===');
     
-    if (!video) return;
-    
-    if (currentCameraStream) stopCamera();
-
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
-        .then(stream => {
-            currentCameraStream = stream;
-            video.srcObject = stream;
-            video.style.display = 'block';
-            video.play().catch(err => console.error('Play error:', err));
-            startBtn.style.display = 'none';
-            captureBtn.style.display = 'block';
-            showNotification('Camera pornita! Apasa Captureaaza', 'success');
-        })
-        .catch(err => {
-            console.error('Camera error:', err);
-            showNotification('Eroare camera: ' + err.message, 'error');
-        });
-}
-
-function editCapturePhoto(clientId) {
-    const video = document.getElementById('editCameraVideo');
-    
-    if (!video || !video.videoWidth || !video.videoHeight) {
-        showNotification('Camera nu este gata! Asteapta 2 secunde...', 'error');
+    const client = clients.find(c => c.id === clientId);
+    if (!client) {
+        console.error('Client negasit cu ID:', clientId);
+        showNotification('Eroare: client negasit!', 'error');
         return;
     }
 
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    // CITIM VALORILE DIN CAMPURI
+    const numeInput = document.getElementById('editNume');
+    const prenumeInput = document.getElementById('editPrenume');
+    const tagInput = document.getElementById('editTag');
     
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0);
+    console.log('Campul tag gasit:', tagInput);
+    console.log('Valoare tag inainte de salvare:', tagInput ? tagInput.value : 'null');
     
-    const photoData = canvas.toDataURL('image/jpeg');
-    const preview = document.getElementById('editPhotoPreview');
-    if (preview) {
-        preview.innerHTML = `<img src="${photoData}" style="width: 100%; height: 100%; object-fit: cover;">`;
-    }
-    
-    video.style.display = 'none';
-    document.getElementById('startEditCamBtn').style.display = 'block';
-    document.getElementById('captureEditBtn').style.display = 'none';
-    
-    localStorage.setItem('tempEditPhoto', photoData);
-    stopCamera();
-    showNotification('Fotografia capturata!', 'success');
-}
-
-function deletePhoto(clientId) {
-    const client = clients.find(c => c.id === clientId);
-    if (client) {
-        client.photo = '';
-        const preview = document.getElementById('editPhotoPreview');
-        if (preview) preview.innerHTML = '<span style="color: #888;">Fara fotografie</span>';
-        localStorage.removeItem('tempEditPhoto');
-        showNotification('Fotografia stearsa!', 'success');
-    }
-}
-
-function saveEditClient(clientId) {
-    const client = clients.find(c => c.id === clientId);
-    if (!client) return;
-
-    const nume = document.getElementById('editNume').value.trim();
-    const prenume = document.getElementById('editPrenume').value.trim();
-    const tag = document.getElementById('editTag').value.trim();
+    const nume = numeInput ? numeInput.value.trim() : '';
+    const prenume = prenumeInput ? prenumeInput.value.trim() : '';
+    const tag = tagInput ? tagInput.value.trim() : '';
     const tempPhoto = localStorage.getItem('tempEditPhoto');
 
     if (!nume || !prenume) {
@@ -1049,9 +1075,12 @@ function saveEditClient(clientId) {
         return;
     }
 
+    // SALVAM DATELE
     client.nume = nume;
     client.prenume = prenume;
-    client.tag = tag;
+    client.tag = tag;  // ← AICI SE SALVEAZĂ TAG-UL
+    
+    console.log('Tag dupa salvare in obiect:', client.tag);
     
     if (tempPhoto) {
         client.photo = tempPhoto;
@@ -1059,8 +1088,14 @@ function saveEditClient(clientId) {
     }
 
     saveClientsToStorage();
-    addToAuditLog('Editeaza client', `${prenume} ${nume}`);
-    showNotification('Client actualizat!', 'success');
+    
+    // VERIFICAM DACA S-A SALVAT
+    const savedClient = clients.find(c => c.id === clientId);
+    console.log('Tag dupa save in storage:', savedClient.tag);
+    
+    addToAuditLog('Editeaza client', `${prenume} ${nume} - Tag: ${tag || 'N/A'}`);
+    showNotification(`Client actualizat! Tag: ${tag || 'N/A'}`, 'success');
+    
     closeModal();
     initClientCards();
 }
@@ -1112,31 +1147,6 @@ function deleteClient(clientId) {
         initClientCards();
     }
 }
-
-// ════════════════════════════════════════════════════════════════════
-// 🏷️ CARD READER SUPPORT
-// ════════════════════════════════════════════════════════════════════
-
-document.addEventListener('keydown', (e) => {
-    // Card reader integration - accumulate scanned data
-    if (e.key !== 'Enter') {
-        cardReaderBuffer += e.key;
-    } else if (cardReaderBuffer.length > 5) {
-        // Card complete - format usually ends with Enter
-        scannedCardNumber = cardReaderBuffer.trim();
-        console.log('Card scanned:', scannedCardNumber);
-        
-        // Auto-fill tag if modal is open
-        const tagInput = document.getElementById('tag');
-        if (tagInput && tagInput.offsetParent !== null) {
-            tagInput.value = scannedCardNumber;
-            showNotification(`Card scanned: ${scannedCardNumber}`, 'success');
-        }
-        
-        cardReaderBuffer = '';
-        e.preventDefault();
-    }
-});
 
 // ════════════════════════════════════════════════════════════════════
 // 🔌 INITIALIZATION
