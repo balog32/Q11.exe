@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "nfc-pcsc": "^0.8.1",
     "pcsclite": "^1.0.1",
     "ws": "^8.20.0"
   }
