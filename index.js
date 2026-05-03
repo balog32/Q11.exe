@@ -6,22 +6,38 @@
 //cititor //
 const nfcSocket = new WebSocket("ws://localhost:8080");
 
+// Actualizare stare NFC
 nfcSocket.onopen = () => {
     console.log("✅ WebSocket conectat");
     const nfcStatus = document.getElementById('nfc-status');
-    if (nfcStatus) nfcStatus.innerHTML = '🟢 NFC Online';
+    if (nfcStatus) {
+        nfcStatus.innerHTML = '🟢 NFC Online';
+        nfcStatus.style.background = 'rgba(0, 255, 136, 0.2)';
+        nfcStatus.style.color = '#00ff88';
+        nfcStatus.style.borderColor = '#00ff88';
+    }
 };
 
 nfcSocket.onerror = (error) => {
     console.log("❌ WebSocket eroare:", error);
     const nfcStatus = document.getElementById('nfc-status');
-    if (nfcStatus) nfcStatus.innerHTML = '🔴 NFC Offline';
+    if (nfcStatus) {
+        nfcStatus.innerHTML = '🔴 NFC Offline';
+        nfcStatus.style.background = 'rgba(255, 107, 107, 0.2)';
+        nfcStatus.style.color = '#ff6b6b';
+        nfcStatus.style.borderColor = '#ff6b6b';
+    }
 };
 
 nfcSocket.onclose = () => {
     console.log("🔌 WebSocket deconectat");
     const nfcStatus = document.getElementById('nfc-status');
-    if (nfcStatus) nfcStatus.innerHTML = '🟡 NFC Standby';
+    if (nfcStatus) {
+        nfcStatus.innerHTML = '🟡 NFC Standby';
+        nfcStatus.style.background = 'rgba(255, 170, 0, 0.2)';
+        nfcStatus.style.color = '#ffaa00';
+        nfcStatus.style.borderColor = '#ffaa00';
+    }
 };
 
 nfcSocket.onmessage = (event) => {
