@@ -5,6 +5,7 @@
 
 //cititor //
 const nfcSocket = new WebSocket("ws://localhost:8080");
+window.nfcSocket = nfcSocket;  // face variabila globală
 
 // Actualizare stare NFC
 nfcSocket.onopen = () => {
@@ -1696,6 +1697,72 @@ function scanTagForAdd() {
         }
     }, 10000);
 }
+
+// Funcție pentru reconectare NFC
+function reconnectNFC() {
+    console.log('🔄 Încercare reconectare NFC...');
+    const nfcStatusText = document.getElementById('nfc-status-text');
+    const reconnectBtn = document.getElementById('nfc-reconnect-btn');
+    
+    if (nfcStatusText) {
+        nfcStatusText.innerHTML = '🟡 Se reconectează...';
+        nfcStatusText.style.color = '#ffaa00';
+    }
+    if (reconnectBtn) {
+        reconnectBtn.disabled = true;
+        reconnectBtn.style.opacity = '0.5';
+    }
+    
+    // Închide conexiunea veche dacă există
+    if (nfcSocket && nfcSocket.readyState === WebSocket.OPEN) {
+        nfcSocket.close();
+    }
+    
+    // Crează conexiune nouă
+    const newSocket = new WebSocket("ws://localhost:5500");
+    
+    newSocket.onopen = () => {
+        console.log("✅ WebSocket reconectat cu succes!");
+        if (nfcStatusText) {
+            nfcStatusText.innerHTML = '🟢 NFC Online';
+            nfcStatusText.style.color = '#00ff88';
+        }
+        if (reconnectBtn) {
+            reconnectBtn.disabled = false;
+            reconnectBtn.style.opacity = '1';
+        }
+        showNotification('✅ Conexiune NFC restabilită!', 'success');
+    };
+    
+    newSocket.onerror = () => {
+        console.log("❌ Eroare la reconectare");
+        if (nfcStatusText) {
+            nfcStatusText.innerHTML = '🔴 NFC Offline';
+            nfcStatusText.style.color = '#ff6b6b';
+        }
+        if (reconnectBtn) {
+            reconnectBtn.disabled = false;
+            reconnectBtn.style.opacity = '1';
+        }
+        showNotification('❌ Nu se poate conecta la serverul NFC!', 'error');
+    };
+    
+    newSocket.onmessage = nfcSocket.onmessage; // Păstrează handler-ul original
+    
+    // Înlocuiește socket-ul vechi
+    window.nfcSocket = newSocket;
+}
+
+// Adaugă un handler pentru când pagina se încarcă să verifice conexiunea
+setInterval(() => {
+    if (window.nfcSocket && window.nfcSocket.readyState !== WebSocket.OPEN) {
+        const nfcStatusText = document.getElementById('nfc-status-text');
+        if (nfcStatusText && nfcStatusText.innerHTML.includes('Online')) {
+            nfcStatusText.innerHTML = '🟡 NFC Standby';
+            nfcStatusText.style.color = '#ffaa00';
+        }
+    }
+}, 5000);
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {

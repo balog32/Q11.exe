@@ -22,20 +22,31 @@
 
     <div class="right">
 
-        <div id="nfc-status" style="
-            padding: 10px 16px;
-            border-radius: 8px;
-            background: rgba(100, 150, 255, 0.2);
-            color: #ffaa00;
-            font-weight: bold;
-            font-size: 12px;
-            border: 2px solid rgba(100, 150, 255, 0.4);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: 0.3s ease;
-        ">
-            🟡 NFC Standby
+       <div id="nfc-status" style="
+             padding: 8px 16px;
+             border-radius: 8px;
+             background: rgba(255, 170, 0, 0.2);
+             color: #ffaa00;
+             font-weight: bold;
+             font-size: 12px;
+             border: 2px solid rgba(255, 170, 0, 0.4);
+             display: flex;
+             align-items: center;
+             gap: 10px;
+             transition: 0.3s ease;
+                  ">
+              <span id="nfc-status-text">🟡 NFC Standby</span>
+                <button id="nfc-reconnect-btn" onclick="reconnectNFC()" style="
+                   background: #ff8c00;
+                 border: none;
+                  border-radius: 6px;
+                 padding: 4px 12px;
+                  color: white;
+                  cursor: pointer;
+                  font-size: 11px;
+                  font-weight: bold;
+                  transition: 0.2s;
+             ">⟳</button>
         </div>
 
         <div id="userArea" onclick="toggleUserMenu()" style="display:none;">
