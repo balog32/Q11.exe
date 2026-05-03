@@ -1663,6 +1663,40 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('Demo: admin/1234 | manager/1234 | staff/1234');
 });
 
+function scanTagForAdd() {
+    showNotification('🟢 Scanează cardul NFC...', 'success');
+    
+    // Salvează handler-ul original
+    const originalOnMessage = nfcSocket.onmessage;
+    
+    // Setează handler temporar pentru o singură scanare
+    nfcSocket.onmessage = (event) => {
+        const tag = event.data.trim().toLowerCase();
+        const tagInput = document.getElementById('tag');
+        if (tagInput) {
+            tagInput.value = tag;
+            showNotification(`✅ Tag preluat: ${tag}`, 'success');
+            // Schimbă culoarea câmpului pentru confirmare
+            tagInput.style.borderColor = '#00ff88';
+            tagInput.style.boxShadow = '0 0 10px rgba(0, 255, 136, 0.5)';
+            setTimeout(() => {
+                tagInput.style.borderColor = '';
+                tagInput.style.boxShadow = '';
+            }, 2000);
+        }
+        // Revino la handler-ul original
+        nfcSocket.onmessage = originalOnMessage;
+    };
+    
+    // Timeout după 10 secunde
+    setTimeout(() => {
+        if (nfcSocket.onmessage !== originalOnMessage) {
+            nfcSocket.onmessage = originalOnMessage;
+            showNotification('⏰ Scanare anulată (timeout)', 'error');
+        }
+    }, 10000);
+}
+
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeModal();

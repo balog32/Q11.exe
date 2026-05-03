@@ -1,7 +1,11 @@
 {
-  "dependencies": {
-    "nfc-pcsc": "^0.8.1",
-    "pcsclite": "^1.0.1",
-    "ws": "^8.20.0"
+  "name": "q11-app",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^30.0.0"
   }
 }

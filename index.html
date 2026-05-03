@@ -118,7 +118,7 @@
     <!-- PERIOADA PERSONALIZATA -->
     <div style="background: rgba(100, 150, 255, 0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #6496ff;">
         <label style="color: #6496ff; font-weight: bold; display: block; margin-bottom: 8px;">📅 Perioada valabilitate (zile):</label>
-        <input type="number" id="customDays" placeholder="30" min="1" max="365" value="30" style="width: 100%; padding: 10px; border: 2px solid #6496ff; border-radius: 8px; background: rgba(100, 150, 255, 0.1); color: #e0e0e0;">
+        <input type="date" id="customDays" placeholder="30" min="1" max="365" value="30" style="width: 100%; padding: 10px; border: 2px solid #6496ff; border-radius: 8px; background: rgba(100, 150, 255, 0.1); color: #e0e0e0;">
     </div>
 
     <!-- CAMERA -->
@@ -131,10 +131,13 @@
     </div>
 
     <!-- TAG / NFC CARD -->
-    <div style="background: rgba(0, 255, 136, 0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #00ff88;">
-        <label style="color: #00ff88; font-weight: bold; display: block; margin-bottom: 8px;">🏷️ Tag NFC (scanează sau introdu manual):</label>
-        <input id="tag" placeholder="Scanează tagul NFC..." style="width: 100%; border: 2px solid rgba(0, 255, 136, 0.4); background: rgba(0, 255, 136, 0.1);">
+<div style="background: rgba(0, 255, 136, 0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #00ff88;">
+    <label style="color: #00ff88; font-weight: bold; display: block; margin-bottom: 8px;">🏷️ Tag NFC (scanează sau introdu manual):</label>
+    <div style="display: flex; gap: 10px;">
+        <input id="tag" placeholder="Scanează tagul NFC..." style="flex: 3; padding: 12px; border: 2px solid rgba(0, 255, 136, 0.4); background: rgba(0, 255, 136, 0.1); color: #0f0; font-family: monospace; font-size: 14px;">
+        <button type="button" onclick="scanTagForAdd()" style="flex: 1; background: #00ff88; color: black; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.3s;">🔍 Scanează</button>
     </div>
+</div>
 
     <!-- BUTOANE -->
     <div class="actions">

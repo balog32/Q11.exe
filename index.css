@@ -489,7 +489,7 @@ input, select {
     border-radius: 10px;
     border: 2px solid rgba(255, 140, 0, 0.2);
     background: linear-gradient(145deg, rgba(45, 63, 95, 0.8), rgba(30, 41, 59, 0.8));
-    color: #e0e0e0;
+    color: #eb2c2c;
     font-size: 14px;
     transition: 0.3s ease;
     font-weight: 500;

@@ -1,47 +1,63 @@
 const WebSocket = require('ws');
 const { NFC } = require('nfc-pcsc');
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
-// Server WebSocket
-const wss = new WebSocket.Server({ port: 8080 });
-console.log('✅ WebSocket Server pe port 8080');
+// Server HTTP pentru fișiere statice
+const server = http.createServer((req, res) => {
+    let filePath = '.' + req.url;
+    if (filePath === './') filePath = './index.html';
+    
+    const extname = path.extname(filePath);
+    let contentType = 'text/html';
+    switch (extname) {
+        case '.css': contentType = 'text/css'; break;
+        case '.js': contentType = 'text/javascript'; break;
+        case '.json': contentType = 'application/json'; break;
+        case '.png': contentType = 'image/png'; break;
+        case '.jpg': contentType = 'image/jpg'; break;
+    }
+    
+    fs.readFile(filePath, (error, content) => {
+        if (error) {
+            res.writeHead(404);
+            res.end('File not found');
+        } else {
+            res.writeHead(200, { 'Content-Type': contentType });
+            res.end(content);
+        }
+    });
+});
+
+// WebSocket pe același server
+const wss = new WebSocket.Server({ server });
+console.log('✅ Server pe http://localhost:8080');
 
 const clients = new Set();
 
 wss.on('connection', (ws) => {
-    console.log('✅ Client conectat la WebSocket');
+    console.log('✅ Client conectat');
     clients.add(ws);
-    
-    ws.on('close', () => {
-        console.log('❌ Client deconectat');
-        clients.delete(ws);
-    });
+    ws.on('close', () => clients.delete(ws));
 });
 
-// Trimite UID la toți clienții
+
 function broadcastCardUID(uid) {
     console.log(`📡 Card: ${uid}`);
     clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(uid);
-        }
+        if (client.readyState === WebSocket.OPEN) client.send(uid);
     });
 }
 
-// Cititor NFC
+
 const nfc = new NFC();
 
 nfc.on('reader', reader => {
-    console.log(`✅ Reader detectat: ${reader.name}`);
-    
-    reader.on('card', card => {
-        const uid = card.uid.toLowerCase();
-        console.log(`🔖 Card detectat: ${uid}`);
-        broadcastCardUID(uid);
-    });
-    
-    reader.on('error', err => {
-        console.error(`❌ Eroare reader: ${err}`);
-    });
+    console.log(`✅ Reader: ${reader.name}`);
+    reader.on('card', card => broadcastCardUID(card.uid.toLowerCase()));
 });
 
-console.log('🔄 Așteptăm carduri NFC...');
+server.listen(8080, () => {
+    console.log('🔄 Aplicația rulează pe http://localhost:8080');
+});
