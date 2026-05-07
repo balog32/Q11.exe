@@ -44,7 +44,7 @@ nfcSocket.onclose = () => {
 nfcSocket.onmessage = (event) => {
     let tagPrimit = event.data.trim().toLowerCase();
     console.log('Tag primit:', tagPrimit);
-    
+
     const client = clients.find(c => {
         if (!c.tag) return false;
         let tagClient = c.tag.trim().toLowerCase();
@@ -78,14 +78,26 @@ nfcSocket.onmessage = (event) => {
         client.usedToday = true;
         addToAuditLog('Intrare NFC', `${client.prenume} ${client.nume} - Tag: ${tagPrimit}`);
         showNotification(`${client.prenume} a intrat în sală!`, "success");
+        // 🔥 ADAUGĂ ASTA - Istoric intrare
+        if (typeof addHistoryEntry === 'function') {
+            addHistoryEntry(client.id, 'checkin', `Intrare NFC - ${client.prenume} ${client.nume}`);
+        }
     } else if (client.nfcScansToday === 2) {
         client.isInGym = false;
         addToAuditLog('Ieșire NFC', `${client.prenume} ${client.nume} - Tag: ${tagPrimit}`);
         showNotification(`${client.prenume} a ieșit din sală!`, "success");
+        // 🔥 ADAUGĂ ASTA - Istoric ieșire
+        if (typeof addHistoryEntry === 'function') {
+            addHistoryEntry(client.id, 'checkout', `Ieșire NFC - ${client.prenume} ${client.nume}`);
+        }
     } else {
         client.isInGym = true;
         addToAuditLog('Re-intrare NFC', `${client.prenume} ${client.nume} - Abonament folosit azi`);
         showNotification("Abonament folosit azi!", "error");
+        // 🔥 ADAUGĂ ASTA - Istoric reintrare (opțional)
+        if (typeof addHistoryEntry === 'function') {
+            addHistoryEntry(client.id, 'checkin', `Re-intrare NFC (a ${client.nfcScansToday}-a scanare) - ${client.prenume} ${client.nume}`);
+        }
     }
 
     saveClientsToStorage();
@@ -1770,3 +1782,490 @@ document.addEventListener('keydown', (e) => {
         closeAllModals();
     }
 });
+
+// ================= NOU: ISTORIC CLIENTI =================
+// Structură nouă pentru stocare istoric
+let clientHistory = JSON.parse(localStorage.getItem('clientHistory')) || {};
+
+function saveClientHistory() {
+    localStorage.setItem('clientHistory', JSON.stringify(clientHistory));
+}
+
+function addHistoryEntry(clientId, type, details = '') {
+    if (!clientHistory[clientId]) {
+        clientHistory[clientId] = [];
+    }
+    
+    clientHistory[clientId].push({
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+        type: type, // 'checkin', 'checkout', 'subscription_created', 'subscription_extended', 'edited'
+        details: details,
+        user: currentUser || 'SYSTEM',
+        date: getTodayDate(),
+        time: new Date().toLocaleTimeString('ro-RO')
+    });
+    
+    saveClientHistory();
+}
+
+// SUPRASCRIEM funcțiile existente pentru a adăuga istoric
+// Păstrăm funcțiile originale, doar adăugăm apeluri la istoric
+
+// Pentru confirmCheckIn (deja existentă, vom completa)
+// Caută funcția confirmCheckIn și înlocuiește-o cu aceasta:
+window.confirmCheckIn = function(clientId) {
+    const client = clients.find(c => c.id === clientId);
+    if (!client) return;
+    
+    client.usedToday = true;
+    client.isInGym = true;
+    clientCheckIns[client.id] = new Date().toISOString();
+    
+    // NOU: Adaugă în istoric
+    addHistoryEntry(clientId, 'checkin', `Intrare în sală - ${client.prenume} ${client.nume}`);
+    
+    saveClientsToStorage();
+    saveCheckIns();
+    addToAuditLog('Intrare client (manuală)', `${client.prenume} ${client.nume}`);
+    showNotification(`${client.prenume} - Intrare înregistrată!`, 'success');
+    closeModal();
+    initClientCards();
+}
+
+// Pentru ieșirea prin NFC (modificăm handler-ul)
+// În funcția nfcSocket.onmessage, la cazul nfcScansToday === 2, adăugăm:
+// addHistoryEntry(client.id, 'checkout', `Ieșire din sală - ${client.prenume} ${client.nume}`);
+
+// Pentru salvare client nou
+window.saveClient = function() {
+    const nume = document.getElementById('name').value.trim();
+    const prenume = document.getElementById('surname').value.trim();
+    const subscription = document.getElementById('subscription').value;
+    const customDays = parseInt(document.getElementById('customDays').value) || 30;
+    const tag = document.getElementById('tag').value.trim().toLowerCase();
+    const photo = localStorage.getItem('tempPhoto') || '';
+
+    if (!nume || !prenume || !subscription) {
+        showNotification('Completeaza toate campurile obligatorii!', 'error');
+        return;
+    }
+
+    const today = new Date();
+    const expirationDate = new Date(today);
+    expirationDate.setDate(expirationDate.getDate() + customDays);
+
+    const newClient = {
+        id: Date.now(),
+        nume: nume,
+        prenume: prenume,
+        subscription: subscription,
+        tag: tag,
+        photo: photo,
+        expiration: expirationDate.toISOString().split('T')[0],
+        isPaid: true,
+        usedToday: false,
+        createdAt: new Date().toISOString(),
+        createdBy: currentUser,
+        startDate: today.toISOString().split('T')[0],
+        duration: customDays
+    };
+
+    clients.push(newClient);
+    saveClientsToStorage();
+    
+    // NOU: Adaugă în istoric crearea abonamentului
+    const subInfo = SUBSCRIPTIONS[subscription];
+    addHistoryEntry(newClient.id, 'subscription_created', 
+        `Abonament creat: ${subInfo?.name || subscription} - ${customDays} zile - Valabil până la ${newClient.expiration}`);
+    
+    addToAuditLog('Adauga client', `${prenume} ${nume} - Abonament: ${customDays} zile - Tag: ${tag || 'N/A'}`);
+    showNotification(`Client ${prenume} ${nume} adaugat!`, 'success');
+    closeAdd();
+    initClientCards();
+}
+
+// Pentru editare client completă
+window.saveEditClientFull = function(clientId) {
+    const client = clients.find(c => c.id === clientId);
+    if (!client) return;
+
+    const oldNume = client.nume;
+    const oldPrenume = client.prenume;
+    const oldTag = client.tag;
+    const oldExpiration = client.expiration;
+    
+    const nume = document.getElementById('editNume')?.value.trim() || '';
+    const prenume = document.getElementById('editPrenume')?.value.trim() || '';
+    const tag = document.getElementById('editTag')?.value.trim().toLowerCase() || '';
+    const tempPhoto = localStorage.getItem('tempEditPhoto');
+
+    if (!nume || !prenume) {
+        showNotification('Completeaza nume si prenume!', 'error');
+        return;
+    }
+
+    client.nume = nume;
+    client.prenume = prenume;
+    client.tag = tag;
+    
+    if (tempPhoto) {
+        client.photo = tempPhoto;
+        localStorage.removeItem('tempEditPhoto');
+    }
+    
+    // NOU: Verifică dacă s-a schimbat data de expirare
+    const newExpiration = document.getElementById('editExpiration')?.value;
+    if (newExpiration && newExpiration !== oldExpiration) {
+        client.expiration = newExpiration;
+        addHistoryEntry(clientId, 'subscription_extended', 
+            `Prelungire abonament: de la ${oldExpiration} la ${newExpiration}`);
+    }
+    
+    // NOU: Adaugă în istoric editarea
+    let changes = [];
+    if (oldNume !== nume || oldPrenume !== prenume) changes.push(`Nume: ${oldPrenume} ${oldNume} → ${prenume} ${nume}`);
+    if (oldTag !== tag) changes.push(`Tag: ${oldTag || 'N/A'} → ${tag || 'N/A'}`);
+    
+    if (changes.length > 0) {
+        addHistoryEntry(clientId, 'edited', `Date modificate: ${changes.join(', ')}`);
+    }
+
+    saveClientsToStorage();
+    addToAuditLog('Editeaza client', `${prenume} ${nume} - Tag: ${tag || 'N/A'}`);
+    showNotification(`✅ Client actualizat! Tag: ${tag || 'N/A'}`, 'success');
+    
+    closeModal();
+    initClientCards();
+}
+
+// Funcție nouă: DESCHIDE ISTORIC CLIENT
+function openClientHistory(clientId) {
+    const client = clients.find(c => c.id === clientId);
+    if (!client) return;
+    
+    const history = clientHistory[clientId] || [];
+    const subscriptionHistoryItems = history.filter(h => 
+        h.type === 'subscription_created' || h.type === 'subscription_extended');
+    const accessHistoryItems = history.filter(h => 
+        h.type === 'checkin' || h.type === 'checkout');
+    
+    // Grupează pe zile
+    const historyByDate = {};
+    history.forEach(entry => {
+        if (!historyByDate[entry.date]) historyByDate[entry.date] = [];
+        historyByDate[entry.date].push(entry);
+    });
+    
+    const sortedDates = Object.keys(historyByDate).sort().reverse();
+    
+    const subInfo = SUBSCRIPTIONS[client.subscription];
+    
+    const html = `
+        <div class="box scroll-box" style="width: 700px; max-width: 95%;">
+            <h2 style="color: #ffaa33;">📜 ISTORIC CLIENT</h2>
+            
+            <div style="display: flex; gap: 15px; margin-bottom: 20px; padding: 15px; background: rgba(255, 140, 0, 0.1); border-radius: 15px;">
+                <div style="min-width: 80px;">
+                    ${client.photo ? `<img src="${client.photo}" style="width: 80px; height: 80px; border-radius: 15px; object-fit: cover;">` : '<div style="width: 80px; height: 80px; background: #333; border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 40px;">👤</div>'}
+                </div>
+                <div>
+                    <p style="font-size: 20px; font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
+                    <p style="font-size: 12px; color: #888; margin: 5px 0;">🏷️ Tag: ${client.tag || 'N/A'}</p>
+                    <p style="font-size: 12px; color: #ffaa33;">📦 Abonament curent: ${subInfo?.name || client.subscription}</p>
+                </div>
+            </div>
+            
+            <!-- Tab-uri pentru istoric -->
+            <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+                <button onclick="switchHistoryTab('all', ${clientId})" id="historyTabAll" style="flex: 1; padding: 12px; background: #ff8c00; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold;">📋 Tot istoricul</button>
+                <button onclick="switchHistoryTab('access', ${clientId})" id="historyTabAccess" style="flex: 1; padding: 12px; background: transparent; border: 2px solid #ffaa33; border-radius: 10px; cursor: pointer; color: #ffaa33; font-weight: bold;">🚪 Intrări/Ieșiri</button>
+                <button onclick="switchHistoryTab('subscriptions', ${clientId})" id="historyTabSubs" style="flex: 1; padding: 12px; background: transparent; border: 2px solid #ffaa33; border-radius: 10px; cursor: pointer; color: #ffaa33; font-weight: bold;">📅 Abonamente</button>
+                <button onclick="switchHistoryTab('stats', ${clientId})" id="historyTabStats" style="flex: 1; padding: 12px; background: transparent; border: 2px solid #ffaa33; border-radius: 10px; cursor: pointer; color: #ffaa33; font-weight: bold;">📊 Statistici</button>
+            </div>
+            
+            <!-- Container pentru conținut -->
+            <div id="historyContent" style="max-height: 400px; overflow-y: auto;">
+                ${renderHistoryContent(history, 'all')}
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button onclick="exportClientHistory(${clientId})" style="flex: 1; background: #00ff88; color: black;">📥 Exportă istoric</button>
+                <button onclick="showClientDetails(${clientId})" style="flex: 1;">◀ Înapoi la client</button>
+            </div>
+        </div>
+    `;
+    
+    openModal(html);
+    
+    // Salvează în variabilă globală pentru tab-uri
+    window.currentHistoryClientId = clientId;
+    window.currentHistoryData = history;
+}
+
+function renderHistoryContent(history, type) {
+    if (type === 'all') {
+        if (history.length === 0) {
+            return '<p style="color: #888; text-align: center; padding: 40px;">📭 Niciun istoric disponibil</p>';
+        }
+        
+        // Grupează pe zile
+        const byDate = {};
+        history.forEach(entry => {
+            if (!byDate[entry.date]) byDate[entry.date] = [];
+            byDate[entry.date].push(entry);
+        });
+        
+        const sortedDates = Object.keys(byDate).sort().reverse();
+        
+        return sortedDates.map(date => `
+            <div style="margin-bottom: 20px;">
+                <div style="background: rgba(255, 140, 0, 0.2); padding: 8px 12px; border-radius: 8px; margin-bottom: 10px;">
+                    <strong style="color: #ffaa33;">📅 ${new Date(date).toLocaleDateString('ro-RO')}</strong>
+                </div>
+                ${byDate[date].map(entry => `
+                    <div style="padding: 12px; margin-bottom: 8px; background: rgba(30, 41, 59, 0.6); border-radius: 10px; border-left: 4px solid ${getHistoryTypeColor(entry.type)};">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="font-size: 20px;">${getHistoryTypeIcon(entry.type)}</span>
+                                <span style="font-weight: bold; color: #fff;">${getHistoryTypeName(entry.type)}</span>
+                            </div>
+                            <span style="color: #888; font-size: 12px;">🕐 ${entry.time}</span>
+                        </div>
+                        <p style="margin: 8px 0 0 0; color: #ccc; font-size: 13px;">${entry.details}</p>
+                        <p style="margin: 5px 0 0 0; color: #6496ff; font-size: 11px;">👤 ${entry.user}</p>
+                    </div>
+                `).join('')}
+            </div>
+        `).join('');
+    }
+    
+    if (type === 'access') {
+        const accessHistory = history.filter(h => h.type === 'checkin' || h.type === 'checkout');
+        if (accessHistory.length === 0) {
+            return '<p style="color: #888; text-align: center; padding: 40px;">🚪 Nicio intrare/ieșire înregistrată</p>';
+        }
+        
+        // Grupează în perechi intrare-ieșire
+        let sessions = [];
+        let currentSession = null;
+        
+        accessHistory.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        
+        accessHistory.forEach(entry => {
+            if (entry.type === 'checkin') {
+                if (currentSession) {
+                    // Salvează sesiunea anterioară dacă există
+                    sessions.push(currentSession);
+                }
+                currentSession = { checkin: entry, checkout: null };
+            } else if (entry.type === 'checkout' && currentSession && !currentSession.checkout) {
+                currentSession.checkout = entry;
+                sessions.push(currentSession);
+                currentSession = null;
+            }
+        });
+        
+        if (currentSession) sessions.push(currentSession);
+        
+        return sessions.map(session => {
+            const checkinTime = new Date(session.checkin.timestamp).toLocaleTimeString('ro-RO');
+            const checkoutTime = session.checkout ? new Date(session.checkout.timestamp).toLocaleTimeString('ro-RO') : 'În sală';
+            const duration = session.checkout ? 
+                Math.round((new Date(session.checkout.timestamp) - new Date(session.checkin.timestamp)) / 60000) : 
+                'N/A';
+            
+            return `
+                <div style="padding: 15px; margin-bottom: 12px; background: rgba(0, 255, 136, 0.1); border-radius: 12px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #00ff88;">✅ Intrare: ${checkinTime}</span>
+                        <span style="color: #6496ff;">❌ Ieșire: ${checkoutTime}</span>
+                    </div>
+                    <p style="margin: 10px 0 0 0; color: #ffaa33;">⏱️ Durată: ${duration !== 'N/A' ? `${duration} minute` : duration}</p>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    if (type === 'subscriptions') {
+        const subsHistory = history.filter(h => h.type === 'subscription_created' || h.type === 'subscription_extended');
+        if (subsHistory.length === 0) {
+            return '<p style="color: #888; text-align: center; padding: 40px;">📅 Niciun abonament înregistrat</p>';
+        }
+        
+        return subsHistory.map(entry => `
+            <div style="padding: 15px; margin-bottom: 12px; background: rgba(100, 150, 255, 0.1); border-radius: 12px; border-left: 4px solid #6496ff;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="font-weight: bold; color: #6496ff;">${entry.type === 'subscription_created' ? '➕ CREARE ABONAMENT' : '✏️ PRELUNGIRE'}</span>
+                    <span style="color: #888;">${entry.date} ${entry.time}</span>
+                </div>
+                <p style="margin: 8px 0 0 0;">${entry.details}</p>
+                <p style="margin: 5px 0 0 0; color: #ffaa33;">👤 ${entry.user}</p>
+            </div>
+        `).join('');
+    }
+    
+    if (type === 'stats') {
+        const totalVisits = history.filter(h => h.type === 'checkin').length;
+        const totalSubscriptionChanges = history.filter(h => h.type === 'subscription_created' || h.type === 'subscription_extended').length;
+        const firstVisit = history.find(h => h.type === 'checkin');
+        const lastVisit = [...history].reverse().find(h => h.type === 'checkin');
+        
+        // Calculează zile active
+        const activeDays = new Set(history.filter(h => h.type === 'checkin').map(h => h.date)).size;
+        
+        return `
+            <div style="padding: 20px;">
+                <div style="background: rgba(0, 255, 136, 0.1); border-radius: 15px; padding: 15px; margin-bottom: 15px;">
+                    <h4 style="color: #00ff88; margin-bottom: 15px;">🏋️ Statistici acces sală</h4>
+                    <p><strong>📊 Total vizite:</strong> ${totalVisits}</p>
+                    <p><strong>📅 Zile active:</strong> ${activeDays}</p>
+                    ${firstVisit ? `<p><strong>🌟 Prima vizită:</strong> ${new Date(firstVisit.timestamp).toLocaleString('ro-RO')}</p>` : ''}
+                    ${lastVisit ? `<p><strong>🕐 Ultima vizită:</strong> ${new Date(lastVisit.timestamp).toLocaleString('ro-RO')}</p>` : ''}
+                </div>
+                
+                <div style="background: rgba(100, 150, 255, 0.1); border-radius: 15px; padding: 15px;">
+                    <h4 style="color: #6496ff; margin-bottom: 15px;">📦 Statistici abonamente</h4>
+                    <p><strong>📅 Total abonamente/ prelungiri:</strong> ${totalSubscriptionChanges}</p>
+                    <p><strong>📅 Abonament curent:</strong> ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
+                    <p><strong>📅 Expiră la:</strong> ${new Date(client.expiration).toLocaleDateString('ro-RO')}</p>
+                </div>
+            </div>
+        `;
+    }
+    
+    return '<p style="color: #888; text-align: center;">Selectează o categorie</p>';
+}
+
+function switchHistoryTab(tab, clientId) {
+    const history = clientHistory[clientId] || [];
+    const content = document.getElementById('historyContent');
+    if (content) {
+        content.innerHTML = renderHistoryContent(history, tab);
+    }
+    
+    // Actualizează stilul butoanelor
+    const tabs = ['all', 'access', 'subscriptions', 'stats'];
+    tabs.forEach(t => {
+        const btn = document.getElementById(`historyTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        if (btn) {
+            if (t === tab) {
+                btn.style.background = '#ff8c00';
+                btn.style.color = 'white';
+                btn.style.border = 'none';
+            } else {
+                btn.style.background = 'transparent';
+                btn.style.color = '#ffaa33';
+                btn.style.border = '2px solid #ffaa33';
+            }
+        }
+    });
+}
+
+function getHistoryTypeIcon(type) {
+    switch(type) {
+        case 'checkin': return '✅';
+        case 'checkout': return '❌';
+        case 'subscription_created': return '➕';
+        case 'subscription_extended': return '✏️';
+        case 'edited': return '📝';
+        default: return '📌';
+    }
+}
+
+function getHistoryTypeName(type) {
+    switch(type) {
+        case 'checkin': return 'Intrare sală';
+        case 'checkout': return 'Ieșire sală';
+        case 'subscription_created': return 'Abonament creat';
+        case 'subscription_extended': return 'Abonament prelungit';
+        case 'edited': return 'Date modificate';
+        default: return 'Eveniment';
+    }
+}
+
+function getHistoryTypeColor(type) {
+    switch(type) {
+        case 'checkin': return '#00ff88';
+        case 'checkout': return '#ff6b6b';
+        case 'subscription_created': return '#6496ff';
+        case 'subscription_extended': return '#ffaa33';
+        case 'edited': return '#ffaa33';
+        default: return '#888';
+    }
+}
+
+function exportClientHistory(clientId) {
+    const client = clients.find(c => c.id === clientId);
+    if (!client) return;
+    
+    const history = clientHistory[clientId] || [];
+    
+    const csv = [['Data', 'Ora', 'Tip', 'Detalii', 'Utilizator'].join(',')];
+    history.forEach(entry => {
+        csv.push([
+            `"${entry.date}"`,
+            `"${entry.time}"`,
+            `"${getHistoryTypeName(entry.type)}"`,
+            `"${entry.details.replace(/"/g, '""')}"`,
+            `"${entry.user}"`
+        ].join(','));
+    });
+    
+    const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `istoric_${client.prenume}_${client.nume}_${getTodayDate()}.csv`;
+    a.click();
+    showNotification('Istoric exportat!', 'success');
+}
+
+// MODIFICĂ funcția showClientDetails pentru a adăuga butonul de istoric
+// Înlocuiește funcția existentă showClientDetails cu aceasta:
+window.showClientDetails = function(clientOrId) {
+    const client = typeof clientOrId === 'number' ? clients.find(c => c.id === clientOrId) : clientOrId;
+    if (!client) return;
+
+    const subInfo = SUBSCRIPTIONS[client.subscription];
+    const daysLeft = getDaysLeft(client.expiration);
+    const access = checkClientAccess(client);
+    const statusColor = getStatusColor(client);
+    const historyCount = (clientHistory[client.id] || []).length;
+
+    const html = `
+        <div class="box scroll-box" style="width: 500px; max-width: 95%;">
+            <h2 style="color: #ffaa33;">📋 ${client.prenume} ${client.nume}</h2>
+            
+            <div style="text-align: center; margin-bottom: 15px;">
+                ${client.photo ? `<img src="${client.photo}" style="width: 150px; height: 150px; border-radius: 20px; object-fit: cover; border: 3px solid ${statusColor}; margin-bottom: 10px;">` : '<div style="width: 150px; height: 150px; background: linear-gradient(145deg, #2c3e66, #1a2a4a); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px auto; font-size: 60px;">👤</div>'}
+            </div>
+            
+            <div style="background: rgba(100, 150, 255, 0.1); padding: 15px; border-radius: 12px; margin-bottom: 15px; font-size: 14px;">
+                <p><strong>📦 Abonament:</strong> ${subInfo.name}</p>
+                <p><strong>📅 Expiră:</strong> ${new Date(client.expiration).toLocaleDateString('ro-RO')}</p>
+                <p><strong>⏳ Zile rămase:</strong> ${daysLeft >= 0 ? daysLeft : 0}</p>
+                <p><strong>📊 Status:</strong> <span style="color: ${statusColor};">${access.message}</span></p>
+                <p><strong>🏷️ Tag:</strong> <span style="font-family: monospace;">${client.tag || 'N/A'}</span></p>
+                <p><strong>👤 Creat de:</strong> ${client.createdBy || 'N/A'}</p>
+                <p><strong>📅 Creat la:</strong> ${new Date(client.createdAt).toLocaleDateString('ro-RO')}</p>
+                <p><strong>📜 Evenimente în istoric:</strong> ${historyCount}</p>
+            </div>
+
+            <div class="actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="editClient(${client.id})" style="flex: 1; min-width: 70px;">✏️ Editează</button>
+                <button onclick="openClientHistory(${client.id})" style="flex: 1; min-width: 70px; background: #6496ff;">📜 Istoric</button>
+                <button onclick="togglePaid(${client.id})" style="flex: 1; min-width: 70px;">💰 Plată</button>
+                <button onclick="deleteClient(${client.id})" style="flex: 1; min-width: 70px;">🗑️ Șterge</button>
+                <button onclick="closeModal()" style="flex: 1; min-width: 70px;">❌ Închide</button>
+            </div>
+        </div>
+    `;
+
+    openModal(html);
+}
+
+// Exportă funcțiile noi pentru a fi accesibile global
+window.openClientHistory = openClientHistory;
+window.switchHistoryTab = switchHistoryTab;
+window.exportClientHistory = exportClientHistory;
