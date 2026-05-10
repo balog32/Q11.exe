@@ -800,9 +800,7 @@ function exportAuditLog() {
     showNotification('Audit exportat!', 'success');
 }
 
-// ════════════════════════════════════════════════════════════════════
-// CONTINUARE ÎN PARTEA 2... (am depășit limita)
-// ════════════════════════════════════════════════════════════════════
+
 
 // ════════════════════════════════════════════════════════════════════
 // ✏️ EDIT CLIENT - VERSIUNE COMPLETĂ (cu calendar pentru perioadă)
@@ -1452,6 +1450,7 @@ function showClientDetails(clientOrId) {
 
             <div class="actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button onclick="editClient(${client.id})" style="flex: 1; min-width: 80px;">✏️ Editează</button>
+                <button onclick="openRenewalModal(${client.id})" style="flex: 1; min-width: 70px; background: #00d4ff;">🔄 Reînnoire</button>
                 <button onclick="togglePaid(${client.id})" style="flex: 1; min-width: 80px;">💰 Plată: ${client.isPaid ? 'Da' : 'Nu'}</button>
                 <button onclick="resetUsage(${client.id})" style="flex: 1; min-width: 80px;">🔄 Reset Zi</button>
                 <button onclick="deleteClient(${client.id})" style="flex: 1; min-width: 80px;">🗑️ Șterge</button>
@@ -2269,3 +2268,4 @@ window.showClientDetails = function(clientOrId) {
 window.openClientHistory = openClientHistory;
 window.switchHistoryTab = switchHistoryTab;
 window.exportClientHistory = exportClientHistory;
+

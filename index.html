@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gym Core System</title>
 <link rel="stylesheet" href="index.css">
-<!--<script src="nfc-integration.js"></script>-->
+
 </head>
 
 <body>
@@ -21,42 +21,12 @@
     </div>
 
     <div class="right">
-
-       <div id="nfc-status" style="
-             padding: 8px 16px;
-             border-radius: 8px;
-             background: rgba(255, 170, 0, 0.2);
-             color: #ffaa00;
-             font-weight: bold;
-             font-size: 12px;
-             border: 2px solid rgba(255, 170, 0, 0.4);
-             display: flex;
-             align-items: center;
-             gap: 10px;
-             transition: 0.3s ease;
-                  ">
-              <span id="nfc-status-text">🟡 NFC Standby</span>
-                <button id="nfc-reconnect-btn" onclick="reconnectNFC()" style="
-                   background: #ff8c00;
-                 border: none;
-                  border-radius: 6px;
-                 padding: 4px 12px;
-                  color: white;
-                  cursor: pointer;
-                  font-size: 11px;
-                  font-weight: bold;
-                  transition: 0.2s;
-             ">⟳</button>
+        <div id="nfc-status" style="padding: 8px 16px; border-radius: 8px; background: rgba(255, 170, 0, 0.2); color: #ffaa00; font-weight: bold; font-size: 12px; border: 2px solid rgba(255, 170, 0, 0.4); display: flex; align-items: center; gap: 10px;">
+            <span id="nfc-status-text">🟡 NFC Standby</span>
+            <button id="nfc-reconnect-btn" onclick="reconnectNFC()" style="background: #ff8c00; border: none; border-radius: 6px; padding: 4px 12px; color: white; cursor: pointer; font-size: 11px; font-weight: bold;">⟳</button>
         </div>
-
-        <div id="userArea" onclick="toggleUserMenu()" style="display:none;">
-            👤 <span id="currentUser"></span>
-        </div>
-
-        <div id="userMenu" class="user-menu">
-            <button onclick="logout()">🚪 Logout</button>
-        </div>
-
+        <div id="userArea" onclick="toggleUserMenu()" style="display:none;">👤 <span id="currentUser"></span></div>
+        <div id="userMenu" class="user-menu"><button onclick="logout()">🚪 Logout</button></div>
         <button id="loginBtn" onclick="openLogin()">🔐 Login</button>
 
     </div>
@@ -66,28 +36,23 @@
 <!-- ================= MAIN CONTAINER ================= -->
 <div class="container">
 
-    <!-- STÂNGA: CLIENȚI ÎN SALĂ -->
-    <div class="left-panel">
+    <div class="left-panel" >
         <div class="panel gym">
             <h2>🏋️ Clienți în sală</h2>
             <div id="gymList" class="scroll"></div>
-            <div class="gym-counter">
-                <strong id="gymCount">0</strong> persoane în sală
-            </div>
+            <div class="gym-counter"><strong id="gymCount">0</strong> persoane în sală</div>
         </div>
     </div>
 
-    <!-- DREAPTA: INTRARE / IEȘIRE -->
+
     <div class="right-panel">
-        
-        <!-- TOP: INTRARE -->
+
         <div class="panel entry">
             <h2>⬆️ INTRARE</h2>
             <div id="entryList" class="entry-container"></div>
         </div>
 
-        <!-- BOTTOM: IEȘIRE -->
-        <div class="panel exit">
+        <div class="panel exit" >
             <h2>⬇️ IEȘIRE</h2>
             <div id="exitList" class="exit-container"></div>
         </div>
@@ -96,9 +61,7 @@
 
 </div>
 
-<!-- ================= MODALS ================= -->
-
-<!-- ADD CLIENT -->
+<!-- ================= MODAL ADD CLIENT ================= -->
 <div id="addModal" class="modal">
   <div class="box scroll-box">
 
@@ -107,8 +70,7 @@
     <input id="name" placeholder="Nume">
     <input id="surname" placeholder="Prenume">
 
-    <!-- ABONAMENTE -->
-    <select id="subscription">
+    <select id="subscription" >
         <option value="">Selectează abonament</option>
 
         <optgroup label="Elevi">
@@ -126,32 +88,26 @@
         </optgroup>
     </select>
 
-    <!-- PERIOADA PERSONALIZATA -->
-    <div style="background: rgba(100, 150, 255, 0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #6496ff;">
-        <label style="color: #6496ff; font-weight: bold; display: block; margin-bottom: 8px;">📅 Perioada valabilitate (zile):</label>
-        <input type="date" id="customDays" placeholder="30" min="1" max="365" value="30" style="width: 100%; padding: 10px; border: 2px solid #6496ff; border-radius: 8px; background: rgba(100, 150, 255, 0.1); color: #e0e0e0;">
+    <div style="background: rgba(100, 150, 255, 0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #6496ff;" >
+        <label style="color: #6496ff; font-weight: bold;">📅 Perioada valabilitate (zile):</label>
+        <input type="number" id="customDays" placeholder="30" min="1" max="365" value="30" style="width: 100%;">
     </div>
 
-    <!-- CAMERA -->
-    <video id="video" autoplay playsinline style="width: 100%; height: 220px; border-radius: 14px; background: #0f1b2e; border: 2px solid rgba(255, 140, 0, 0.25); object-fit: cover;"></video>
-    <img id="preview" style="display: none; width: 100%; height: 220px; border-radius: 14px; background: #0f1b2e; border: 2px solid rgba(255, 140, 0, 0.25); object-fit: cover;">
-
+    <video id="video" autoplay playsinline style="width: 100%; height: 220px; border-radius: 14px; background: #0f1b2e; border: 2px solid rgba(255, 140, 0, 0.25); object-fit: cover;" ></video>
+    <img id="preview" style="display: none; width: 100%; height: 220px; border-radius: 14px; background: #0f1b2e; object-fit: cover;">
     <div class="photo-buttons">
         <button onclick="capture()">📸 Fă poză</button>
         <button onclick="startCamera()">🔄 Repornește</button>
     </div>
-
-    <!-- TAG / NFC CARD -->
-<div style="background: rgba(0, 255, 136, 0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #00ff88;">
-    <label style="color: #00ff88; font-weight: bold; display: block; margin-bottom: 8px;">🏷️ Tag NFC (scanează sau introdu manual):</label>
-    <div style="display: flex; gap: 10px;">
-        <input id="tag" placeholder="Scanează tagul NFC..." style="flex: 3; padding: 12px; border: 2px solid rgba(0, 255, 136, 0.4); background: rgba(0, 255, 136, 0.1); color: #0f0; font-family: monospace; font-size: 14px;">
-        <button type="button" onclick="scanTagForAdd()" style="flex: 1; background: #00ff88; color: black; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.3s;">🔍 Scanează</button>
+    <div style="background: rgba(0, 255, 136, 0.1); padding: 12px; border-radius: 8px; border-left: 4px solid #00ff88;">
+        <label style="color: #00ff88; font-weight: bold;">🏷️ Tag NFC:</label>
+        <div style="display: flex; gap: 10px;">
+            <input id="tag" placeholder="Scanează tagul NFC..." style="flex: 3;">
+            <button type="button" onclick="scanTagForAdd()" style="flex: 1; background: #00ff88; color: black;">🔍 Scaneaza</button>
+        </div>
     </div>
-</div>
 
-    <!-- BUTOANE -->
-    <div class="actions">
+    <div class="actions" >
         <button onclick="saveClient()">💾 Salvează</button>
         <button onclick="closeAdd()">❌ Închide</button>
     </div>
@@ -159,7 +115,7 @@
   </div>
 </div>
 
-<!-- SEARCH CLIENT -->
+<!-- ================= MODAL SEARCH ================= -->
 <div id="searchModal" class="modal">
   <div class="box">
 
@@ -170,11 +126,65 @@
     <div id="results" class="scroll"></div>
 
     <button onclick="closeSearch()">Închide</button>
+  </div>
 
+</div>
+
+<!-- ================= MODAL DETAILS CLIENT ================= -->
+<div id="detailModal" class="modal">
+  <div class="box scroll-box" style="width: 550px; max-width: 95%;">
+    <div id="detailModalContent"></div>
+    <div class="actions">
+      <button onclick="closeModal()">❌ Închide</button>
+    </div>
   </div>
 </div>
 
-<!-- LOGIN -->
+<!-- ================= MODAL REÎNNOIRE ABONAMENT ================= -->
+<div id="renewalModal" class="modal">
+  <div class="box scroll-box" style="width: 500px; max-width: 95%;">
+    <h2 style="color: #ffaa33;">🔄 Reînnoire Abonament</h2>
+    
+    <div style="background: rgba(255, 170, 0, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
+      <p style="color: #ffaa33; margin-bottom: 5px;">📋 Client:</p>
+      <p id="renewalClientName" style="font-weight: bold; font-size: 16px;"></p>
+      <p id="renewalCurrentSub" style="font-size: 12px; color: #888;"></p>
+    </div>
+
+    <div style="background: rgba(0, 255, 136, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
+      <label style="color: #00ff88; font-weight: bold;">🎯 Selectează abonament nou:</label>
+      <select id="renewalSubscription" style="width: 100%; margin-top: 8px;">
+        <option value="elev_standard">Elev Standard (07-17) - 30 zile</option>
+        <option value="elev_full">Elev Full (07-21) - 30 zile</option>
+        <option value="adult_standard">Adult Standard (07-17) - 30 zile</option>
+        <option value="adult_full">Adult Full (07-21) - 30 zile</option>
+        <option value="2weeks">2 Săptămâni - 15 zile</option>
+      </select>
+    </div>
+
+    <div style="background: rgba(100, 150, 255, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
+      <label style="color: #6496ff; font-weight: bold;">📅 Perioada (zile):</label>
+      <input type="number" id="renewalDays" readonly style="width: 100%; margin-top: 8px; background: rgba(100,150,255,0.2); font-weight: bold;">
+    </div>
+
+    <div style="background: rgba(150, 100, 255, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
+      <label style="color: #bb99ff; font-weight: bold;">📆 Data început:</label>
+      <input type="date" id="renewalStartDate" style="width: 100%; margin-top: 8px;">
+    </div>
+
+    <div style="background: rgba(255, 107, 107, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
+      <p style="color: #ff6b6b; font-weight: bold;">🗓️ Data expirare (nouă):</p>
+      <p id="renewalExpirePreview" style="font-size: 16px; font-weight: bold; color: #00ff88;"></p>
+    </div>
+
+    <div class="actions" style="display: flex; gap: 10px;">
+      <button onclick="confirmRenewal()" style="flex: 1; background: #00ff88; color: black;">✅ Confirmă Reînnoire</button>
+      <button onclick="closeRenewalModal()" style="flex: 1; background: #ff6b6b;">❌ Anulează</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= MODAL LOGIN ================= -->
 <div id="loginModal" class="modal">
   <div class="box">
 
