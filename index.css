@@ -276,10 +276,40 @@ body::before {
     background: linear-gradient(135deg, rgba(255, 107, 107, 0.05) 0%, transparent 100%);
 }
 
+/* ================= GYM PANEL SCROLL FIX ================= */
 .gym {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    height: 100%; /* asigură că ocupă spațiul disponibil */
+    max-height: 70vh; /* înălțime maximă, după care apare scroll */
+}
+
+#gymList {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0; /* crucial pentru flex scroll */
+    padding-right: 8px;
+}
+
+#gymList::-webkit-scrollbar {
+    width: 8px;
+}
+
+#gymList::-webkit-scrollbar-track {
+    background: rgba(255, 140, 0, 0.1);
+    border-radius: 10px;
+}
+
+#gymList::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #ff8c00, #ffaa33);
+    border-radius: 10px;
+}
+
+.gym-counter {
+    flex-shrink: 0; /* contorul rămâne jos, nu intră în scroll */
+    margin-top: auto;
 }
 
 .scroll {
