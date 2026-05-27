@@ -1420,7 +1420,6 @@ function confirmCheckIn(clientId) {
 // ════════════════════════════════════════════════════════════════════
 // 📋 CLIENT DETAILS
 // ════════════════════════════════════════════════════════════════════
-
 function showClientDetails(clientOrId) {
     const client = typeof clientOrId === 'number' ? clients.find(c => c.id === clientOrId) : clientOrId;
     if (!client) return;
@@ -1429,9 +1428,10 @@ function showClientDetails(clientOrId) {
     const daysLeft = getDaysLeft(client.expiration);
     const access = checkClientAccess(client);
     const statusColor = getStatusColor(client);
+    const historyCount = (clientHistory[client.id] || []).length;
 
     const html = `
-        <div class="box scroll-box" style="width: 480px; max-width: 95%;">
+        <div class="box scroll-box" style="width: 500px; max-width: 95%;">
             <h2 style="color: #ffaa33;">📋 ${client.prenume} ${client.nume}</h2>
             
             <div style="text-align: center; margin-bottom: 15px;">
@@ -1446,15 +1446,17 @@ function showClientDetails(clientOrId) {
                 <p><strong>🏷️ Tag:</strong> <span style="font-family: monospace;">${client.tag || 'N/A'}</span></p>
                 <p><strong>👤 Creat de:</strong> ${client.createdBy || 'N/A'}</p>
                 <p><strong>📅 Creat la:</strong> ${new Date(client.createdAt).toLocaleDateString('ro-RO')}</p>
+                <p><strong>📜 Evenimente în istoric:</strong> ${historyCount}</p>
             </div>
 
             <div class="actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button onclick="editClient(${client.id})" style="flex: 1; min-width: 80px;">✏️ Editează</button>
-                <button onclick="openRenewalModal(${client.id})" style="flex: 1; min-width: 70px; background: #00d4ff;">🔄 Reînnoire</button>
-                <button onclick="togglePaid(${client.id})" style="flex: 1; min-width: 80px;">💰 Plată: ${client.isPaid ? 'Da' : 'Nu'}</button>
-                <button onclick="resetUsage(${client.id})" style="flex: 1; min-width: 80px;">🔄 Reset Zi</button>
-                <button onclick="deleteClient(${client.id})" style="flex: 1; min-width: 80px;">🗑️ Șterge</button>
-                <button onclick="closeModal()" style="flex: 1; min-width: 80px;">❌ Închide</button>
+                <button onclick="editClient(${client.id})" style="flex: 1; min-width: 70px; background: #ff8c00; color: white; border: none; border-radius: 8px; cursor: pointer; padding: 10px;">✏️ Editează</button>
+                <button onclick="openClientHistory(${client.id})" style="flex: 1; min-width: 70px; background: #6496ff; color: white; border: none; border-radius: 8px; cursor: pointer; padding: 10px;">📜 Istoric</button>
+                <button onclick="openRenewalModal(${client.id})" style="flex: 1; min-width: 70px; background: #00d4ff; color: black; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; padding: 10px;">🔄 Reînnoire</button>
+                <button onclick="togglePaid(${client.id})" style="flex: 1; min-width: 70px; background: #00ff88; color: black; border: none; border-radius: 8px; cursor: pointer; padding: 10px;">💰 Plată</button>
+                <button onclick="resetUsage(${client.id})" style="flex: 1; min-width: 70px; background: #ffaa00; color: black; border: none; border-radius: 8px; cursor: pointer; padding: 10px;">🔄 Reset Zi</button>
+                <button onclick="deleteClient(${client.id})" style="flex: 1; min-width: 70px; background: #ff6b6b; color: white; border: none; border-radius: 8px; cursor: pointer; padding: 10px;">🗑️ Șterge</button>
+                <button onclick="closeModal()" style="flex: 1; min-width: 70px; background: #666; color: white; border: none; border-radius: 8px; cursor: pointer; padding: 10px;">❌ Închide</button>
             </div>
         </div>
     `;
@@ -2008,7 +2010,6 @@ function renderHistoryContent(history, type) {
             return '<p style="color: #888; text-align: center; padding: 40px;">📭 Niciun istoric disponibil</p>';
         }
         
-        // Grupează pe zile
         const byDate = {};
         history.forEach(entry => {
             if (!byDate[entry.date]) byDate[entry.date] = [];
@@ -2045,7 +2046,6 @@ function renderHistoryContent(history, type) {
             return '<p style="color: #888; text-align: center; padding: 40px;">🚪 Nicio intrare/ieșire înregistrată</p>';
         }
         
-        // Grupează în perechi intrare-ieșire
         let sessions = [];
         let currentSession = null;
         
@@ -2053,10 +2053,7 @@ function renderHistoryContent(history, type) {
         
         accessHistory.forEach(entry => {
             if (entry.type === 'checkin') {
-                if (currentSession) {
-                    // Salvează sesiunea anterioară dacă există
-                    sessions.push(currentSession);
-                }
+                if (currentSession) sessions.push(currentSession);
                 currentSession = { checkin: entry, checkout: null };
             } else if (entry.type === 'checkout' && currentSession && !currentSession.checkout) {
                 currentSession.checkout = entry;
@@ -2105,12 +2102,14 @@ function renderHistoryContent(history, type) {
     }
     
     if (type === 'stats') {
+        // Accesează clientul din variabila globală
+        const clientId = window.currentHistoryClientId;
+        const clientData = clients.find(c => c.id === clientId);
+        
         const totalVisits = history.filter(h => h.type === 'checkin').length;
         const totalSubscriptionChanges = history.filter(h => h.type === 'subscription_created' || h.type === 'subscription_extended').length;
         const firstVisit = history.find(h => h.type === 'checkin');
         const lastVisit = [...history].reverse().find(h => h.type === 'checkin');
-        
-        // Calculează zile active
         const activeDays = new Set(history.filter(h => h.type === 'checkin').map(h => h.date)).size;
         
         return `
@@ -2125,9 +2124,9 @@ function renderHistoryContent(history, type) {
                 
                 <div style="background: rgba(100, 150, 255, 0.1); border-radius: 15px; padding: 15px;">
                     <h4 style="color: #6496ff; margin-bottom: 15px;">📦 Statistici abonamente</h4>
-                    <p><strong>📅 Total abonamente/ prelungiri:</strong> ${totalSubscriptionChanges}</p>
-                    <p><strong>📅 Abonament curent:</strong> ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
-                    <p><strong>📅 Expiră la:</strong> ${new Date(client.expiration).toLocaleDateString('ro-RO')}</p>
+                    <p><strong>📅 Total abonamente/prelungiri:</strong> ${totalSubscriptionChanges}</p>
+                    ${clientData ? `<p><strong>📅 Abonament curent:</strong> ${SUBSCRIPTIONS[clientData.subscription]?.name || clientData.subscription}</p>` : ''}
+                    ${clientData ? `<p><strong>📅 Expiră la:</strong> ${new Date(clientData.expiration).toLocaleDateString('ro-RO')}</p>` : ''}
                 </div>
             </div>
         `;
@@ -2220,50 +2219,207 @@ function exportClientHistory(clientId) {
     showNotification('Istoric exportat!', 'success');
 }
 
-// MODIFICĂ funcția showClientDetails pentru a adăuga butonul de istoric
-// Înlocuiește funcția existentă showClientDetails cu aceasta:
-window.showClientDetails = function(clientOrId) {
-    const client = typeof clientOrId === 'number' ? clients.find(c => c.id === clientOrId) : clientOrId;
+
+// ========== REÎNNOIRE ABONAMENT ==========
+
+// Variabilă pentru clientul curent în reînnoire
+let currentRenewalClient = null;
+
+// Deschide modalul de reînnoire
+function openRenewalModal(clientId) {
+    const client = clients.find(c => c.id === clientId);
     if (!client) return;
-
-    const subInfo = SUBSCRIPTIONS[client.subscription];
-    const daysLeft = getDaysLeft(client.expiration);
-    const access = checkClientAccess(client);
-    const statusColor = getStatusColor(client);
-    const historyCount = (clientHistory[client.id] || []).length;
-
-    const html = `
-        <div class="box scroll-box" style="width: 500px; max-width: 95%;">
-            <h2 style="color: #ffaa33;">📋 ${client.prenume} ${client.nume}</h2>
-            
-            <div style="text-align: center; margin-bottom: 15px;">
-                ${client.photo ? `<img src="${client.photo}" style="width: 150px; height: 150px; border-radius: 20px; object-fit: cover; border: 3px solid ${statusColor}; margin-bottom: 10px;">` : '<div style="width: 150px; height: 150px; background: linear-gradient(145deg, #2c3e66, #1a2a4a); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px auto; font-size: 60px;">👤</div>'}
-            </div>
-            
-            <div style="background: rgba(100, 150, 255, 0.1); padding: 15px; border-radius: 12px; margin-bottom: 15px; font-size: 14px;">
-                <p><strong>📦 Abonament:</strong> ${subInfo.name}</p>
-                <p><strong>📅 Expiră:</strong> ${new Date(client.expiration).toLocaleDateString('ro-RO')}</p>
-                <p><strong>⏳ Zile rămase:</strong> ${daysLeft >= 0 ? daysLeft : 0}</p>
-                <p><strong>📊 Status:</strong> <span style="color: ${statusColor};">${access.message}</span></p>
-                <p><strong>🏷️ Tag:</strong> <span style="font-family: monospace;">${client.tag || 'N/A'}</span></p>
-                <p><strong>👤 Creat de:</strong> ${client.createdBy || 'N/A'}</p>
-                <p><strong>📅 Creat la:</strong> ${new Date(client.createdAt).toLocaleDateString('ro-RO')}</p>
-                <p><strong>📜 Evenimente în istoric:</strong> ${historyCount}</p>
-            </div>
-
-            <div class="actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button onclick="editClient(${client.id})" style="flex: 1; min-width: 70px;">✏️ Editează</button>
-                <button onclick="openClientHistory(${client.id})" style="flex: 1; min-width: 70px; background: #6496ff;">📜 Istoric</button>
-                <button onclick="togglePaid(${client.id})" style="flex: 1; min-width: 70px;">💰 Plată</button>
-                <button onclick="deleteClient(${client.id})" style="flex: 1; min-width: 70px;">🗑️ Șterge</button>
-                <button onclick="closeModal()" style="flex: 1; min-width: 70px;">❌ Închide</button>
-            </div>
-        </div>
-    `;
-
-    openModal(html);
+    
+    // Verifică dacă abonamentul este activ (nu expirat)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expireDate = new Date(client.expiration);
+    expireDate.setHours(0, 0, 0, 0);
+    
+    if (expireDate > today) {
+        showNotification(`❌ Abonamentul este activ până la ${expireDate.toLocaleDateString('ro-RO')}.\nPoți reînnoi doar după expirare!`, 'error');
+        return;
+    }
+    
+    currentRenewalClient = { ...client };
+    
+    // Setează numele clientului în modal
+    const renewalModal = document.getElementById('renewalModal');
+    if (!renewalModal) {
+        showNotification('Eroare: Modal reînnoire negăsit!', 'error');
+        return;
+    }
+    
+    const clientNameSpan = document.getElementById('renewalClientName');
+    const currentSubSpan = document.getElementById('renewalCurrentSub');
+    
+    if (clientNameSpan) clientNameSpan.innerHTML = `${client.prenume} ${client.nume}`;
+    if (currentSubSpan) {
+        const subName = SUBSCRIPTIONS[client.subscription]?.name || client.subscription;
+        currentSubSpan.innerHTML = `Abonament curent: ${subName} (expiră ${new Date(client.expiration).toLocaleDateString('ro-RO')})`;
+    }
+    
+    // Setează data început implicit = azi
+    const todayStr = new Date().toISOString().split('T')[0];
+    const startDateInput = document.getElementById('renewalStartDate');
+    if (startDateInput) startDateInput.value = todayStr;
+    
+    // Setează abonamentul implicit = cel curent
+    const subSelect = document.getElementById('renewalSubscription');
+    if (subSelect) {
+        if (client.subscription && [...subSelect.options].some(opt => opt.value === client.subscription)) {
+            subSelect.value = client.subscription;
+        } else {
+            subSelect.value = 'adult_standard';
+        }
+    }
+    
+    // Actualizează preview
+    updateRenewalDays();
+    updateRenewalExpirePreview();
+    
+    // Arată modalul
+    renewalModal.style.display = 'flex';
 }
 
+// Actualizează câmpul zile în funcție de abonament
+function updateRenewalDays() {
+    const subType = document.getElementById('renewalSubscription')?.value;
+    let days = 30;
+    
+    switch(subType) {
+        case 'elev_standard':
+        case 'elev_full':
+        case 'adult_standard':
+        case 'adult_full':
+            days = 30;
+            break;
+        case '2weeks':
+            days = 15;
+            break;
+        default:
+            days = 30;
+    }
+    
+    const daysInput = document.getElementById('renewalDays');
+    if (daysInput) daysInput.value = days;
+    updateRenewalExpirePreview();
+}
+
+// Calculează și afișează noua dată expirare
+function updateRenewalExpirePreview() {
+    const startDateStr = document.getElementById('renewalStartDate')?.value;
+    const days = parseInt(document.getElementById('renewalDays')?.value || 30);
+    
+    if (!startDateStr) return;
+    
+    const startDate = new Date(startDateStr);
+    startDate.setHours(0, 0, 0, 0);
+    
+    const expireDate = new Date(startDate);
+    expireDate.setDate(expireDate.getDate() + days);
+    
+    const formattedExpire = expireDate.toLocaleDateString('ro-RO');
+    const previewSpan = document.getElementById('renewalExpirePreview');
+    if (previewSpan) {
+        previewSpan.innerHTML = formattedExpire;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        previewSpan.style.color = expireDate < today ? '#ff6b6b' : '#00ff88';
+    }
+}
+
+// Confirmă reînnoirea
+function confirmRenewal() {
+    if (!currentRenewalClient) return;
+    
+    const newSubType = document.getElementById('renewalSubscription')?.value;
+    const startDateStr = document.getElementById('renewalStartDate')?.value;
+    const days = parseInt(document.getElementById('renewalDays')?.value || 30);
+    
+    if (!startDateStr) {
+        showNotification('Te rog selectează data început!', 'error');
+        return;
+    }
+    
+    const startDate = new Date(startDateStr);
+    startDate.setHours(0, 0, 0, 0);
+    
+    const expireDate = new Date(startDate);
+    expireDate.setDate(expireDate.getDate() + days);
+    
+    // Găsește clientul original
+    const originalClient = clients.find(c => c.id === currentRenewalClient.id);
+    if (!originalClient) return;
+    
+    // Salvează vechiul abonament în istoric
+    const oldSubName = SUBSCRIPTIONS[originalClient.subscription]?.name || originalClient.subscription;
+    const newSubName = SUBSCRIPTIONS[newSubType]?.name || newSubType;
+    
+    addHistoryEntry(originalClient.id, 'subscription_extended', 
+        `Reînnoire abonament: ${oldSubName} → ${newSubName} | Valabil de la ${startDate.toLocaleDateString('ro-RO')} până la ${expireDate.toLocaleDateString('ro-RO')} (${days} zile)`);
+    
+    // Actualizează clientul
+    originalClient.subscription = newSubType;
+    originalClient.expiration = expireDate.toISOString().split('T')[0];
+    originalClient.startDate = startDate.toISOString().split('T')[0];
+    originalClient.duration = days;
+    originalClient.updatedAt = new Date().toISOString();
+    
+    // Resetează utilizarea zilnică pentru noul abonament
+    originalClient.usedToday = false;
+    originalClient.isInGym = false;
+    originalClient.nfcScansToday = 0;
+    
+    saveClientsToStorage();
+    addToAuditLog('Reînnoire abonament', `${originalClient.prenume} ${originalClient.nume} - ${newSubName} - ${days} zile - Expiră: ${originalClient.expiration}`);
+    showNotification(`✅ Abonament reînnoit cu succes!\n📅 Valabil până la ${expireDate.toLocaleDateString('ro-RO')}`, 'success');
+    
+    closeRenewalModal();
+    initClientCards();
+    
+    // Reîncarcă detaliile dacă sunt deschise
+    closeModal();
+    setTimeout(() => showClientDetails(originalClient.id), 100);
+}
+
+// Închide modalul de reînnoire
+function closeRenewalModal() {
+    const modal = document.getElementById('renewalModal');
+    if (modal) modal.style.display = 'none';
+    currentRenewalClient = null;
+}
+
+// Activează event listeners pentru modalul de reînnoire
+function initRenewalModalEvents() {
+    const subSelect = document.getElementById('renewalSubscription');
+    if (subSelect) {
+        subSelect.removeEventListener('change', updateRenewalDays);
+        subSelect.addEventListener('change', updateRenewalDays);
+    }
+    
+    const startDateInput = document.getElementById('renewalStartDate');
+    if (startDateInput) {
+        startDateInput.removeEventListener('change', updateRenewalExpirePreview);
+        startDateInput.addEventListener('change', updateRenewalExpirePreview);
+    }
+}
+
+// Rulează inițializarea după ce DOM-ul e gata
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initRenewalModalEvents);
+} else {
+    initRenewalModalEvents();
+}
+
+// Exportă funcțiile global
+window.openRenewalModal = openRenewalModal;
+window.confirmRenewal = confirmRenewal;
+window.closeRenewalModal = closeRenewalModal;
+window.updateRenewalDays = updateRenewalDays;
+window.updateRenewalExpirePreview = updateRenewalExpirePreview;
+
+//aici in sus cod nou//
 // Exportă funcțiile noi pentru a fi accesibile global
 window.openClientHistory = openClientHistory;
 window.switchHistoryTab = switchHistoryTab;

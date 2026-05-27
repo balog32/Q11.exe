@@ -717,3 +717,34 @@ input::placeholder {
         background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 27, 46, 0.9) 100%);
     }
 }
+
+/* ================= MODAL REÎNNOIRE ================= */
+#renewalModal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+}
+
+#renewalModal.active,
+#renewalModal[style*="display: flex"] {
+    display: flex !important;
+}
+
+#renewalModal .box {
+    width: 500px;
+    max-width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.98), rgba(15, 27, 46, 0.98));
+    border: 2px solid rgba(255, 140, 0, 0.4);
+    border-radius: 20px;
+    padding: 25px;
+}
