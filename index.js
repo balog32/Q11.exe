@@ -2222,50 +2222,114 @@ function exportClientHistory(clientId) {
 
 // MODIFICĂ funcția showClientDetails pentru a adăuga butonul de istoric
 // Înlocuiește funcția existentă showClientDetails cu aceasta:
-window.showClientDetails = function(clientOrId) {
-    const client = typeof clientOrId === 'number' ? clients.find(c => c.id === clientOrId) : clientOrId;
-    if (!client) return;
-
-    const subInfo = SUBSCRIPTIONS[client.subscription];
-    const daysLeft = getDaysLeft(client.expiration);
-    const access = checkClientAccess(client);
-    const statusColor = getStatusColor(client);
-    const historyCount = (clientHistory[client.id] || []).length;
-
-    const html = `
-        <div class="box scroll-box" style="width: 500px; max-width: 95%;">
-            <h2 style="color: #ffaa33;">📋 ${client.prenume} ${client.nume}</h2>
+// window.showClientDetails = function(clientOrId) {
+//    const client = typeof clientOrId === 'number' ? clients.find(c => c.id === clientOrId) : clientOrId;
+//    if (!client) return;
+//
+//    const subInfo = SUBSCRIPTIONS[client.subscription];
+//    const daysLeft = getDaysLeft(client.expiration);
+//    const access = checkClientAccess(client);
+//    const statusColor = getStatusColor(client);
+//    const historyCount = (clientHistory[client.id] || []).length;
+//
+//    const html = `
+//        <div class="box scroll-box" style="width: 500px; max-width: 95%;">
+//            <h2 style="color: #ffaa33;">📋 ${client.prenume} ${client.nume}</h2>
+//            
+//            <div style="text-align: center; margin-bottom: 15px;">
+//                ${client.photo ? `<img src="${client.photo}" style="width: 150px; height: 150px; border-radius: 20px; object-fit: cover; border: 3px solid ${statusColor}; margin-bottom: 10px;">` : '<div style="width: 150px; height: 150px; background: linear-gradient(145deg, #2c3e66, #1a2a4a); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px auto; font-size: 60px;">👤</div>'}
+//            </div>
             
-            <div style="text-align: center; margin-bottom: 15px;">
-                ${client.photo ? `<img src="${client.photo}" style="width: 150px; height: 150px; border-radius: 20px; object-fit: cover; border: 3px solid ${statusColor}; margin-bottom: 10px;">` : '<div style="width: 150px; height: 150px; background: linear-gradient(145deg, #2c3e66, #1a2a4a); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px auto; font-size: 60px;">👤</div>'}
-            </div>
-            
-            <div style="background: rgba(100, 150, 255, 0.1); padding: 15px; border-radius: 12px; margin-bottom: 15px; font-size: 14px;">
-                <p><strong>📦 Abonament:</strong> ${subInfo.name}</p>
-                <p><strong>📅 Expiră:</strong> ${new Date(client.expiration).toLocaleDateString('ro-RO')}</p>
-                <p><strong>⏳ Zile rămase:</strong> ${daysLeft >= 0 ? daysLeft : 0}</p>
-                <p><strong>📊 Status:</strong> <span style="color: ${statusColor};">${access.message}</span></p>
-                <p><strong>🏷️ Tag:</strong> <span style="font-family: monospace;">${client.tag || 'N/A'}</span></p>
-                <p><strong>👤 Creat de:</strong> ${client.createdBy || 'N/A'}</p>
-                <p><strong>📅 Creat la:</strong> ${new Date(client.createdAt).toLocaleDateString('ro-RO')}</p>
-                <p><strong>📜 Evenimente în istoric:</strong> ${historyCount}</p>
-            </div>
+//            <div style="background: rgba(100, 150, 255, 0.1); padding: 15px; border-radius: 12px; margin-bottom: 15px; font-size: 14px;">
+//                <p><strong>📦 Abonament:</strong> ${subInfo.name}</p>
+//                <p><strong>📅 Expiră:</strong> ${new Date(client.expiration).toLocaleDateString('ro-RO')}</p>
+//                <p><strong>⏳ Zile rămase:</strong> ${daysLeft >= 0 ? daysLeft : 0}</p>
+//                <p><strong>📊 Status:</strong> <span style="color: ${statusColor};">${access.message}</span></p>
+//                <p><strong>🏷️ Tag:</strong> <span style="font-family: monospace;">${client.tag || 'N/A'}</span></p>
+//                <p><strong>👤 Creat de:</strong> ${client.createdBy || 'N/A'}</p>
+//                <p><strong>📅 Creat la:</strong> ${new Date(client.createdAt).toLocaleDateString('ro-RO')}</p>
+//                <p><strong>📜 Evenimente în istoric:</strong> ${historyCount}</p>
+//            </div>
 
-            <div class="actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button onclick="editClient(${client.id})" style="flex: 1; min-width: 70px;">✏️ Editează</button>
-                <button onclick="openClientHistory(${client.id})" style="flex: 1; min-width: 70px; background: #6496ff;">📜 Istoric</button>
-                <button onclick="togglePaid(${client.id})" style="flex: 1; min-width: 70px;">💰 Plată</button>
-                <button onclick="deleteClient(${client.id})" style="flex: 1; min-width: 70px;">🗑️ Șterge</button>
-                <button onclick="closeModal()" style="flex: 1; min-width: 70px;">❌ Închide</button>
-            </div>
-        </div>
-    `;
+//            <div class="actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
+//                <button onclick="editClient(${client.id})" style="flex: 1; min-width: 70px;">✏️ Editează</button>
+//                <button onclick="openClientHistory(${client.id})" style="flex: 1; min-width: 70px; background: #6496ff;">📜 Istoric</button>
+//                <button onclick="togglePaid(${client.id})" style="flex: 1; min-width: 70px;">💰 Plată</button>
+//                <button onclick="deleteClient(${client.id})" style="flex: 1; min-width: 70px;">🗑️ Șterge</button>
+//                <button onclick="closeModal()" style="flex: 1; min-width: 70px;">❌ Închide</button>
+//            </div>
+//        </div>
+//    `;
 
-    openModal(html);
-}
+//    openModal(html);
+// } 
 
 // Exportă funcțiile noi pentru a fi accesibile global
 window.openClientHistory = openClientHistory;
 window.switchHistoryTab = switchHistoryTab;
 window.exportClientHistory = exportClientHistory;
 
+// ========== REÎNNOIRE ABONAMENT ==========
+
+let currentRenewalClient = null;
+
+function openRenewalModal(clientId) {
+    const client = clients.find(c => c.id === clientId);
+    if (!client) {
+        showNotification('Client negăsit!', 'error');
+        return;
+    }
+    
+    currentRenewalClient = client;
+    
+    // Populează informațiile clientului
+    const clientNameSpan = document.getElementById('renewalClientName');
+    const currentSubSpan = document.getElementById('renewalCurrentSub');
+    
+    if (clientNameSpan) {
+        clientNameSpan.innerHTML = `${client.prenume} ${client.nume}`;
+    }
+    
+    if (currentSubSpan) {
+        const subName = SUBSCRIPTIONS[client.subscription]?.name || client.subscription;
+        const expDate = new Date(client.expiration).toLocaleDateString('ro-RO');
+        currentSubSpan.innerHTML = `Abonament curent: ${subName}<br>Expiră: ${expDate}`;
+    }
+    
+    // Setează data început = azi
+    const todayStr = new Date().toISOString().split('T')[0];
+    const startDateInput = document.getElementById('renewalStartDate');
+    if (startDateInput) {
+        startDateInput.value = todayStr;
+    }
+    
+    // Actualizează preview
+    if (typeof updateRenewalDays === 'function') {
+        updateRenewalDays();
+    }
+    if (typeof updateRenewalExpirePreview === 'function') {
+        updateRenewalExpirePreview();
+    }
+    
+    // Arată modalul
+    const modal = document.getElementById('renewalModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+    } else {
+        showNotification('Eroare: Modal reînnoire negăsit!', 'error');
+    }
+}
+
+function closeRenewalModal() {
+    const modal = document.getElementById('renewalModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+    }
+    currentRenewalClient = null;
+}
+
+// Exportă funcțiile pentru a fi accesibile global
+window.openRenewalModal = openRenewalModal;
+window.closeRenewalModal = closeRenewalModal;
