@@ -121,11 +121,11 @@
 
     <h2>🔍 Caută client</h2>
 
-    <input id="search" placeholder="Scrie numele sau scanează NFC..." oninput="searchClient()">
+    <input id="search" placeholder="Scrie numele sau scanează NFC..." oninput="searchClient()" style="width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 10px; border: 2px solid #ffaa33; background: rgba(255, 140, 0, 0.1); color: #fff; font-size: 16px;">
 
-    <div id="results" class="scroll"></div>
+    <div id="searchResultsContainer" class="scroll" style="max-height: 400px; overflow-y: auto;"></div>
 
-    <button onclick="closeSearch()">Închide</button>
+    <button onclick="closeSearch()" style="margin-top: 15px;">Închide</button>
   </div>
 
 </div>
@@ -223,6 +223,6 @@
   </div>
 </div>
 
-<script src="index.js"></script>
+<script src="index_new.js"></script>
 </body>
 </html>
