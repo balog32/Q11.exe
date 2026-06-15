@@ -1762,7 +1762,7 @@ function initClientCards() {
     const sortedGymClients = [...inGymClients].sort((a, b) => {
         const timeA = clientCheckIns[a.id] ? new Date(clientCheckIns[a.id]).getTime() : 0;
         const timeB = clientCheckIns[b.id] ? new Date(clientCheckIns[b.id]).getTime() : 0;
-        return timeA - timeB; // Cel mai vechi primul
+        return timeB - timeA; // Cel mai vechi primul
     });
     
     const gymList = document.getElementById('gymList');
@@ -1792,13 +1792,15 @@ function initClientCards() {
 }
 
 function getClientDaysLeft(client) {
-    const startDate = new Date(client.startDate || client.createdAt);
-    startDate.setHours(0, 0, 0, 0);
+    // Folosește data de expirare, nu data de început
+    const expirationDate = new Date(client.expiration);
+    expirationDate.setHours(23, 59, 59, 999); // Expiră la sfârșitul zilei
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const totalDays = client.duration || 30;
-    const daysSinceStart = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
-    const daysLeft = totalDays - daysSinceStart;
+    
+    const timeDiff = expirationDate - today;
+    const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+    
     return daysLeft < 0 ? 0 : daysLeft;
 }
 
@@ -2042,7 +2044,6 @@ function deleteClient(clientId) {
 function checkClientAccess(client) {
     const now = new Date();
     const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
     const subInfo = SUBSCRIPTIONS[client.subscription];
     
     if (!subInfo) {
@@ -2053,23 +2054,31 @@ function checkClientAccess(client) {
         return { allowed: false, message: 'Neachitat', status: 'expired' };
     }
 
-    const startDate = new Date(client.startDate || client.createdAt);
-    startDate.setHours(0, 0, 0, 0);
+    // Folosește data de expirare - este cea mai sigură sursă
+    const expirationDate = new Date(client.expiration);
+    expirationDate.setHours(23, 59, 59, 999);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const totalDays = client.duration || 30;
-    const daysSinceStart = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
     
-    if (daysSinceStart >= totalDays) {
+    const timeDiff = expirationDate - today;
+    const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+    
+    // Dacă a expirat
+    if (daysLeft < 0) {
         return { allowed: false, message: 'Expirat', status: 'expired', daysLeft: 0 };
     }
     
-    const daysLeft = totalDays - daysSinceStart;
+    // Dacă expiră astăzi
+    if (daysLeft === 0) {
+        return { allowed: true, message: 'Expiră AZI', status: 'warning', daysLeft: 0 };
+    }
 
+    // Avertisment ultimele 3 zile
     if (daysLeft <= 3) {
         return { allowed: true, message: `Expiră în ${daysLeft} zile`, status: 'warning', daysLeft };
     }
 
+    // Verifică programul de funcționare
     if (currentHour < subInfo.startHour || currentHour >= subInfo.endHour) {
         return { allowed: false, message: 'În afara programului', status: 'expired', daysLeft };
     }
@@ -2679,9 +2688,11 @@ window.compareYears = compareYears;
 // Funcția getDaysLeft rămâne pentru compatibilitate
 function getDaysLeft(expiration) {
     if (!expiration) return 0;
+    const expirationDate = new Date(expiration);
+    expirationDate.setHours(23, 59, 59, 999);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const expDate = new Date(expiration);
-    expDate.setHours(0, 0, 0, 0);
-    return Math.ceil((expDate - today) / (1000 * 60 * 60 * 24));
+    const timeDiff = expirationDate - today;
+    const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+    return daysLeft < 0 ? 0 : daysLeft;
 }
