@@ -2374,31 +2374,27 @@ function checkClientAccess(client) {
         return { allowed: false, message: 'Neachitat', status: 'expired' };
     }
 
-    // Folosește data de expirare - este cea mai sigură sursă
-    const expirationDate = new Date(client.expiration);
-    expirationDate.setHours(23, 59, 59, 999);
+    // Calculează zilele rămase
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const expirationDate = new Date(client.expiration);
+    expirationDate.setHours(0, 0, 0, 0);
     
+    // Diferența în zile
     const timeDiff = expirationDate - today;
     const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
     
-    // Dacă a expirat
-    if (daysLeft < 0) {
+    // Dacă a expirat (daysLeft <= 0)
+    if (daysLeft <= 0) {
         return { allowed: false, message: 'Expirat', status: 'expired', daysLeft: 0 };
     }
     
-    // Dacă expiră astăzi
-    if (daysLeft === 0) {
-        return { allowed: true, message: 'Expiră AZI', status: 'warning', daysLeft: 0 };
-    }
-
-    // Avertisment ultimele 3 zile
+    // Dacă expiră în 1-3 zile
     if (daysLeft <= 3) {
         return { allowed: true, message: `Expiră în ${daysLeft} zile`, status: 'warning', daysLeft };
     }
 
-    // Verifică programul de funcționare
+    // Verifică programul
     if (currentHour < subInfo.startHour || currentHour >= subInfo.endHour) {
         return { allowed: false, message: 'În afara programului', status: 'expired', daysLeft };
     }
@@ -3007,13 +3003,14 @@ window.compareMonths = compareMonths;
 window.compareYears = compareYears;
 
 // Funcția getDaysLeft rămâne pentru compatibilitate
-function getDaysLeft(expiration) {
+ function getDaysLeft(expiration) {
     if (!expiration) return 0;
-    const expirationDate = new Date(expiration);
-    expirationDate.setHours(23, 59, 59, 999);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const expirationDate = new Date(expiration);
+    expirationDate.setHours(0, 0, 0, 0);
     const timeDiff = expirationDate - today;
     const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-    return daysLeft < 0 ? 0 : daysLeft;
+    // Returnează 0 pentru expirat (daysLeft <= 0)
+    return daysLeft <= 0 ? 0 : daysLeft;
 }
