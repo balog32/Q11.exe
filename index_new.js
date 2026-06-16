@@ -1078,10 +1078,11 @@ function openReports() {
                 <h3 style="color: #ffaa33; margin-bottom: 15px;">📋 Raport Abonamente Create</h3>
                 <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
                     <select id="subsReportPeriod" onchange="filterSubscriptionsReport()" style="padding: 10px; border-radius: 8px; background: #1a1a2e; color: white;">
-                        <option value="today">Astăzi</option>
-                        <option value="week">Săptămâna aceasta</option>
-                        <option value="month">Luna aceasta</option>
-                        <option value="all">Toate</option>
+                       <option value="today">📅 Astăzi</option>
+                       <option value="week">📅 Săptămâna curentă</option>
+                       <option value="month">📅 Luna curentă</option>
+                       <option value="lastMonth">📅 Luna trecută</option>
+                       <option value="all">📅 Toate</option>
                     </select>
                     <button onclick="exportSubscriptionsReport()" style="padding: 10px 20px; background: #00ff88; color: black;">📥 Exportă CSV</button>
                 </div>
@@ -1391,45 +1392,182 @@ function renderActivityReport() {
 
 function renderSubscriptionsCreatedReport() {
     const period = document.getElementById('subsReportPeriod')?.value || 'today';
-    const now = new Date();
-    let filtered = [...clients];
+    let filtered = [];
+    const today = new Date();
     
-    if (period === 'today') {
-        const todayStr = getTodayDate();
-        filtered = clients.filter(c => c.createdAt && c.createdAt.startsWith(todayStr));
-    } else if (period === 'week') {
-        const weekAgo = new Date(now.setDate(now.getDate() - 7));
-        filtered = clients.filter(c => c.createdAt && new Date(c.createdAt) >= weekAgo);
-    } else if (period === 'month') {
-        const monthAgo = new Date(now.setMonth(now.getMonth() - 1));
-        filtered = clients.filter(c => c.createdAt && new Date(c.createdAt) >= monthAgo);
+    let startDate, endDate;
+    
+    switch(period) {
+        case 'today':
+            startDate = new Date(today);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(today);
+            endDate.setHours(23, 59, 59, 999);
+            break;
+            
+        case 'week':
+            const dayOfWeek = today.getDay();
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+            startOfWeek.setHours(0, 0, 0, 0);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 6);
+            endOfWeek.setHours(23, 59, 59, 999);
+            startDate = startOfWeek;
+            endDate = endOfWeek;
+            break;
+            
+        case 'month':
+            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            endDate.setHours(23, 59, 59, 999);
+            break;
+            
+        case 'lastMonth':
+            startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+            endDate.setHours(23, 59, 59, 999);
+            break;
+            
+        case 'all':
+        default:
+            startDate = null;
+            endDate = null;
+            break;
     }
     
+    // FILTRARE - include createdAt (creare) și updatedAt (reînnoire)
+    if (startDate && endDate) {
+        filtered = clients.filter(c => {
+            let included = false;
+            let dateType = '';
+            
+            // Verifică createdAt (data creării)
+            if (c.createdAt) {
+                const createdDate = new Date(c.createdAt);
+                if (createdDate >= startDate && createdDate <= endDate) {
+                    included = true;
+                    dateType = 'CREAT';
+                }
+            }
+            
+            // Verifică updatedAt (data reînnoirii) - dacă nu a fost deja inclus
+            if (!included && c.updatedAt) {
+                const updatedDate = new Date(c.updatedAt);
+                if (updatedDate >= startDate && updatedDate <= endDate) {
+                    included = true;
+                    dateType = 'REÎNNOIT';
+                }
+            }
+            
+            // Verifică startDate (data începutului) - dacă nu a fost deja inclus
+            if (!included && c.startDate) {
+                const startDateObj = new Date(c.startDate);
+                if (startDateObj >= startDate && startDateObj <= endDate) {
+                    included = true;
+                    dateType = 'ÎNCEPUT';
+                }
+            }
+            
+            // Salvează tipul pentru afișare
+            if (included) {
+                c._reportType = dateType;
+            }
+            
+            return included;
+        });
+    } else {
+        filtered = [...clients];
+        filtered.forEach(c => c._reportType = 'TOTAL');
+    }
+    
+    // Grupează pe categorii de abonament
     const summary = {};
+    const typeSummary = { CREAT: 0, REÎNNOIT: 0, ÎNCEPUT: 0, TOTAL: 0 };
+    
     filtered.forEach(c => {
-        const subName = SUBSCRIPTIONS[c.subscription]?.name || c.subscription;
+        const subName = SUBSCRIPTIONS[c.subscription]?.name || c.subscription || 'Necunoscut';
         summary[subName] = (summary[subName] || 0) + 1;
+        
+        if (c._reportType) {
+            typeSummary[c._reportType] = (typeSummary[c._reportType] || 0) + 1;
+        }
+        typeSummary.TOTAL++;
     });
     
-    const listHtml = filtered.map(client => `
-        <div class="client-card" style="margin-bottom: 8px; cursor: pointer;" onclick="showClientDetails(${client.id})">
-            <div style="min-width: 50px;">
-                ${client.photo ? `<img src="${client.photo}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : '<div style="width: 50px; height: 50px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>'}
-            </div>
-            <div style="flex: 1;">
-                <p style="font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
-                <p style="font-size: 11px; margin: 2px 0;">📦 ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
-                <p style="font-size: 10px; color: #6496ff;">📅 Creat: ${new Date(client.createdAt).toLocaleDateString('ro-RO')} | 👤 ${client.createdBy || 'N/A'}</p>
-            </div>
-        </div>
-    `).join('');
+    // Afișează perioada în titlu
+    let periodLabel = '';
+    switch(period) {
+        case 'today':
+            periodLabel = `Astăzi (${startDate.toLocaleDateString('ro-RO')})`;
+            break;
+        case 'week':
+            periodLabel = `Săptămâna curentă (${startDate.toLocaleDateString('ro-RO')} - ${endDate.toLocaleDateString('ro-RO')})`;
+            break;
+        case 'month':
+            periodLabel = `Luna curentă (${startDate.toLocaleDateString('ro-RO')} - ${endDate.toLocaleDateString('ro-RO')})`;
+            break;
+        case 'lastMonth':
+            periodLabel = `Luna trecută (${startDate.toLocaleDateString('ro-RO')} - ${endDate.toLocaleDateString('ro-RO')})`;
+            break;
+        case 'all':
+            periodLabel = 'Toate abonamentele';
+            break;
+    }
     
+    // Afișează rezumatul cu tipuri
+    let typeSummaryHtml = '';
+    if (period !== 'all') {
+        typeSummaryHtml = `
+            <div style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; margin-top: 8px;">
+                ${typeSummary.CREAT > 0 ? `<span style="background: rgba(0, 255, 136, 0.2); padding: 3px 12px; border-radius: 15px; color: #00ff88;">🆕 CREATE: ${typeSummary.CREAT}</span>` : ''}
+                ${typeSummary.REÎNNOIT > 0 ? `<span style="background: rgba(255, 170, 0, 0.2); padding: 3px 12px; border-radius: 15px; color: #ffaa33;">🔄 REÎNNOITE: ${typeSummary.REÎNNOIT}</span>` : ''}
+                ${typeSummary.ÎNCEPUT > 0 ? `<span style="background: rgba(100, 150, 255, 0.2); padding: 3px 12px; border-radius: 15px; color: #6496ff;">📅 ÎNCEPUT: ${typeSummary.ÎNCEPUT}</span>` : ''}
+            </div>
+        `;
+    }
+    
+    // Lista abonamentelor
+    const listHtml = filtered.map(client => {
+        const typeLabel = client._reportType === 'CREAT' ? '🆕 CREAT' : 
+                         client._reportType === 'REÎNNOIT' ? '🔄 REÎNNOIT' :
+                         client._reportType === 'ÎNCEPUT' ? '📅 ÎNCEPUT' : '';
+        const typeColor = client._reportType === 'CREAT' ? '#00ff88' : 
+                         client._reportType === 'REÎNNOIT' ? '#ffaa33' : '#6496ff';
+        
+        return `
+            <div class="client-card" style="margin-bottom: 8px; cursor: pointer;" onclick="showClientDetails(${client.id})">
+                <div style="min-width: 50px;">
+                    ${client.photo ? `<img src="${client.photo}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : '<div style="width: 50px; height: 50px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>'}
+                </div>
+                <div style="flex: 1;">
+                    <p style="font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
+                    <p style="font-size: 11px; margin: 2px 0;">📦 ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription || 'N/A'}</p>
+                    <p style="font-size: 10px; color: ${typeColor};">
+                        ${typeLabel}
+                        ${client.createdAt ? ` | 📅 ${new Date(client.createdAt).toLocaleDateString('ro-RO')}` : ''}
+                        ${client.updatedAt && client.updatedAt !== client.createdAt ? ` | 🔄 ${new Date(client.updatedAt).toLocaleDateString('ro-RO')}` : ''}
+                    </p>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    // Rezumat pe categorii
     const summaryHtml = Object.entries(summary).map(([name, count]) => 
         `<span style="display: inline-block; background: rgba(255, 140, 0, 0.2); padding: 5px 12px; border-radius: 20px; margin: 5px;">${name}: ${count}</span>`
     ).join('');
     
-    document.getElementById('subscriptionsCreatedList').innerHTML = listHtml || '<p style="color: #888;">Nu există abonamente în perioada selectată</p>';
-    document.getElementById('subscriptionsCreatedTotal').innerHTML = `<strong>📊 Total abonamente: ${filtered.length}</strong><br>${summaryHtml}`;
+    document.getElementById('subscriptionsCreatedList').innerHTML = listHtml || '<p style="color: #888; text-align: center;">Nu există abonamente în perioada selectată</p>';
+    document.getElementById('subscriptionsCreatedTotal').innerHTML = `
+        <strong>📊 Perioada: ${periodLabel}</strong><br>
+        <strong>Total abonamente: ${filtered.length}</strong>
+        ${typeSummaryHtml}
+        <br>
+        ${summaryHtml || 'Nicio categorie'}
+    `;
 }
 
 function generateCustomPeriodReport() {
@@ -1442,12 +1580,41 @@ function generateCustomPeriodReport() {
     }
     
     const startDate = new Date(startDateStr);
+    startDate.setHours(0, 0, 0, 0);
     const endDate = new Date(endDateStr);
-    endDate.setHours(23, 59, 59);
+    endDate.setHours(23, 59, 59, 999);
     
-    const filteredClients = clients.filter(c => {
-        const createdDate = new Date(c.createdAt);
-        return createdDate >= startDate && createdDate <= endDate;
+    // Funcție pentru a verifica dacă un client este în perioada selectată
+    function isClientInPeriod(client, start, end) {
+        // Verifică createdAt (creare)
+        if (client.createdAt) {
+            const d = new Date(client.createdAt);
+            if (d >= start && d <= end) return true;
+        }
+        // Verifică updatedAt (reînnoire)
+        if (client.updatedAt) {
+            const d = new Date(client.updatedAt);
+            if (d >= start && d <= end) return true;
+        }
+        // Verifică startDate (început abonament)
+        if (client.startDate) {
+            const d = new Date(client.startDate);
+            if (d >= start && d <= end) return true;
+        }
+        return false;
+    }
+    
+    const filteredClients = clients.filter(c => isClientInPeriod(c, startDate, endDate));
+    
+    // Adaugă tipuri pentru afișare
+    filteredClients.forEach(c => {
+        if (c.updatedAt && new Date(c.updatedAt) >= startDate && new Date(c.updatedAt) <= endDate) {
+            c._reportType = 'REÎNNOIT';
+        } else if (c.createdAt && new Date(c.createdAt) >= startDate && new Date(c.createdAt) <= endDate) {
+            c._reportType = 'CREAT';
+        } else if (c.startDate && new Date(c.startDate) >= startDate && new Date(c.startDate) <= endDate) {
+            c._reportType = 'ÎNCEPUT';
+        }
     });
     
     const filteredAudit = auditLog.filter(log => {
@@ -1458,16 +1625,35 @@ function generateCustomPeriodReport() {
     const totalSubscriptions = filteredClients.length;
     const totalActions = filteredAudit.length;
     const subscriptionsByType = {};
+    const typeSummary = { CREAT: 0, REÎNNOIT: 0, ÎNCEPUT: 0 };
+    
     filteredClients.forEach(c => {
-        const subName = SUBSCRIPTIONS[c.subscription]?.name || c.subscription;
+        const subName = SUBSCRIPTIONS[c.subscription]?.name || c.subscription || 'Necunoscut';
         subscriptionsByType[subName] = (subscriptionsByType[subName] || 0) + 1;
+        
+        if (c._reportType) {
+            typeSummary[c._reportType] = (typeSummary[c._reportType] || 0) + 1;
+        }
     });
+    
+    // Afișează tipurile
+    let typeSummaryHtml = '';
+    if (typeSummary.CREAT > 0 || typeSummary.REÎNNOIT > 0) {
+        typeSummaryHtml = `
+            <div style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; margin-top: 8px;">
+                ${typeSummary.CREAT > 0 ? `<span style="background: rgba(0, 255, 136, 0.2); padding: 3px 12px; border-radius: 15px; color: #00ff88;">🆕 CREATE: ${typeSummary.CREAT}</span>` : ''}
+                ${typeSummary.REÎNNOIT > 0 ? `<span style="background: rgba(255, 170, 0, 0.2); padding: 3px 12px; border-radius: 15px; color: #ffaa33;">🔄 REÎNNOITE: ${typeSummary.REÎNNOIT}</span>` : ''}
+                ${typeSummary.ÎNCEPUT > 0 ? `<span style="background: rgba(100, 150, 255, 0.2); padding: 3px 12px; border-radius: 15px; color: #6496ff;">📅 ÎNCEPUT: ${typeSummary.ÎNCEPUT}</span>` : ''}
+            </div>
+        `;
+    }
     
     const statsHtml = `
         <div style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: space-around; margin-bottom: 20px;">
             <div style="text-align: center; background: rgba(0, 255, 136, 0.1); padding: 15px; border-radius: 12px; min-width: 120px;">
                 <div style="font-size: 28px; font-weight: bold; color: #00ff88;">${totalSubscriptions}</div>
-                <div style="color: #00ff88;">📊 Abonamente create</div>
+                <div style="color: #00ff88;">📊 Abonamente (create + reînnoite)</div>
+                ${typeSummaryHtml}
             </div>
             <div style="text-align: center; background: rgba(255, 170, 0, 0.1); padding: 15px; border-radius: 12px; min-width: 120px;">
                 <div style="font-size: 28px; font-weight: bold; color: #ffaa33;">${totalActions}</div>
@@ -1486,17 +1672,21 @@ function generateCustomPeriodReport() {
     `;
     
     const listHtml = `
-        <h4 style="color: #ffaa33; margin-top: 15px;">📋 Lista abonamentelor create</h4>
+        <h4 style="color: #ffaa33; margin-top: 15px;">📋 Lista abonamentelor (create + reînnoite)</h4>
         <div style="max-height: 250px; overflow-y: auto;">
             ${filteredClients.map(client => `
-                <div class="client-card" style="margin-bottom: 8px; cursor: pointer;" onclick="showClientDetails(${client.id})">
+                <div class="client-card" style="margin-bottom: 8px; cursor: pointer; border-left: 4px solid ${client._reportType === 'CREAT' ? '#00ff88' : '#ffaa33'};" onclick="showClientDetails(${client.id})">
                     <div style="min-width: 50px;">
                         ${client.photo ? `<img src="${client.photo}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : '<div style="width: 50px; height: 50px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>'}
                     </div>
                     <div style="flex: 1;">
                         <p style="font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
                         <p style="font-size: 11px; margin: 2px 0;">📦 ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
-                        <p style="font-size: 10px; color: #6496ff;">📅 Creat: ${new Date(client.createdAt).toLocaleDateString('ro-RO')}</p>
+                        <p style="font-size: 10px; color: ${client._reportType === 'CREAT' ? '#00ff88' : '#ffaa33'};">
+                            ${client._reportType === 'CREAT' ? '🆕 CREAT' : client._reportType === 'REÎNNOIT' ? '🔄 REÎNNOIT' : '📅 ÎNCEPUT'} 
+                            ${client.createdAt ? `| 📅 ${new Date(client.createdAt).toLocaleDateString('ro-RO')}` : ''}
+                            ${client.updatedAt && client.updatedAt !== client.createdAt ? `| 🔄 ${new Date(client.updatedAt).toLocaleDateString('ro-RO')}` : ''}
+                        </p>
                     </div>
                 </div>
             `).join('')}
@@ -1512,19 +1702,34 @@ function compareMonths() {
     const today = new Date();
     const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const currentMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    currentMonthEnd.setHours(23, 59, 59, 999);
     
     const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+    lastMonthEnd.setHours(23, 59, 59, 999);
     
-    const currentMonthClients = clients.filter(c => {
-        const createdDate = new Date(c.createdAt);
-        return createdDate >= currentMonthStart && createdDate <= currentMonthEnd;
-    });
+    // Funcție pentru a verifica dacă un client este în perioada selectată
+    function isClientInPeriod(client, start, end) {
+        // Verifică createdAt (creare)
+        if (client.createdAt) {
+            const d = new Date(client.createdAt);
+            if (d >= start && d <= end) return true;
+        }
+        // Verifică updatedAt (reînnoire)
+        if (client.updatedAt) {
+            const d = new Date(client.updatedAt);
+            if (d >= start && d <= end) return true;
+        }
+        // Verifică startDate (început abonament)
+        if (client.startDate) {
+            const d = new Date(client.startDate);
+            if (d >= start && d <= end) return true;
+        }
+        return false;
+    }
     
-    const lastMonthClients = clients.filter(c => {
-        const createdDate = new Date(c.createdAt);
-        return createdDate >= lastMonthStart && createdDate <= lastMonthEnd;
-    });
+    const currentMonthClients = clients.filter(c => isClientInPeriod(c, currentMonthStart, currentMonthEnd));
+    const lastMonthClients = clients.filter(c => isClientInPeriod(c, lastMonthStart, lastMonthEnd));
     
     const currentMonthActions = auditLog.filter(log => {
         const logDate = new Date(log.timestamp);
@@ -1536,52 +1741,139 @@ function compareMonths() {
         return logDate >= lastMonthStart && logDate <= lastMonthEnd;
     });
     
+    // Adaugă tipuri pentru afișare
+    currentMonthClients.forEach(c => {
+        c._comparisonType = 'Luna curentă';
+        if (c.updatedAt && new Date(c.updatedAt) >= currentMonthStart && new Date(c.updatedAt) <= currentMonthEnd) {
+            c._reportType = 'REÎNNOIT';
+        } else if (c.createdAt && new Date(c.createdAt) >= currentMonthStart && new Date(c.createdAt) <= currentMonthEnd) {
+            c._reportType = 'CREAT';
+        } else if (c.startDate && new Date(c.startDate) >= currentMonthStart && new Date(c.startDate) <= currentMonthEnd) {
+            c._reportType = 'ÎNCEPUT';
+        }
+    });
+    
+    lastMonthClients.forEach(c => {
+        c._comparisonType = 'Luna trecută';
+        if (c.updatedAt && new Date(c.updatedAt) >= lastMonthStart && new Date(c.updatedAt) <= lastMonthEnd) {
+            c._reportType = 'REÎNNOIT';
+        } else if (c.createdAt && new Date(c.createdAt) >= lastMonthStart && new Date(c.createdAt) <= lastMonthEnd) {
+            c._reportType = 'CREAT';
+        } else if (c.startDate && new Date(c.startDate) >= lastMonthStart && new Date(c.startDate) <= lastMonthEnd) {
+            c._reportType = 'ÎNCEPUT';
+        }
+    });
+    
     const statsHtml = `
         <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-between;">
             <div style="flex: 1; background: rgba(0, 255, 136, 0.1); padding: 15px; border-radius: 12px; text-align: center;">
                 <h4 style="color: #00ff88;">📅 ${currentMonthStart.toLocaleDateString('ro-RO')} - ${currentMonthEnd.toLocaleDateString('ro-RO')}</h4>
                 <div style="font-size: 28px; font-weight: bold;">${currentMonthClients.length}</div>
-                <div>Abonamente create</div>
+                <div>Abonamente (create + reînnoite)</div>
+                <div style="font-size: 14px; margin-top: 8px;">
+                    ${currentMonthClients.filter(c => c._reportType === 'CREAT').length > 0 ? `🆕 Create: ${currentMonthClients.filter(c => c._reportType === 'CREAT').length}` : ''}
+                    ${currentMonthClients.filter(c => c._reportType === 'REÎNNOIT').length > 0 ? ` | 🔄 Reînnoite: ${currentMonthClients.filter(c => c._reportType === 'REÎNNOIT').length}` : ''}
+                </div>
                 <div style="font-size: 20px; margin-top: 10px;">${currentMonthActions.length}</div>
                 <div>Acțiuni înregistrate</div>
             </div>
             <div style="flex: 1; background: rgba(100, 150, 255, 0.1); padding: 15px; border-radius: 12px; text-align: center;">
                 <h4 style="color: #6496ff;">📅 ${lastMonthStart.toLocaleDateString('ro-RO')} - ${lastMonthEnd.toLocaleDateString('ro-RO')}</h4>
                 <div style="font-size: 28px; font-weight: bold;">${lastMonthClients.length}</div>
-                <div>Abonamente create</div>
+                <div>Abonamente (create + reînnoite)</div>
+                <div style="font-size: 14px; margin-top: 8px;">
+                    ${lastMonthClients.filter(c => c._reportType === 'CREAT').length > 0 ? `🆕 Create: ${lastMonthClients.filter(c => c._reportType === 'CREAT').length}` : ''}
+                    ${lastMonthClients.filter(c => c._reportType === 'REÎNNOIT').length > 0 ? ` | 🔄 Reînnoite: ${lastMonthClients.filter(c => c._reportType === 'REÎNNOIT').length}` : ''}
+                </div>
                 <div style="font-size: 20px; margin-top: 10px;">${lastMonthActions.length}</div>
                 <div>Acțiuni înregistrate</div>
             </div>
         </div>
         <div style="margin-top: 15px; text-align: center; padding: 10px; background: rgba(255, 140, 0, 0.1); border-radius: 8px;">
             ${currentMonthClients.length > lastMonthClients.length ? 
-                `📈 Creștere cu ${((currentMonthClients.length - lastMonthClients.length) / lastMonthClients.length * 100).toFixed(1)}% față de luna trecută` : 
+                `📈 Creștere cu ${((currentMonthClients.length - lastMonthClients.length) / (lastMonthClients.length || 1) * 100).toFixed(1)}% față de luna trecută` : 
                 currentMonthClients.length < lastMonthClients.length ?
-                `📉 Scădere cu ${((lastMonthClients.length - currentMonthClients.length) / lastMonthClients.length * 100).toFixed(1)}% față de luna trecută` :
+                `📉 Scădere cu ${((lastMonthClients.length - currentMonthClients.length) / (lastMonthClients.length || 1) * 100).toFixed(1)}% față de luna trecută` :
                 `📊 Nivel similar cu luna trecută`}
         </div>
     `;
     
     document.getElementById('customPeriodStats').innerHTML = statsHtml;
-    document.getElementById('customPeriodList').innerHTML = '';
+    document.getElementById('customPeriodList').innerHTML = `
+        <h4 style="color: #ffaa33; margin-top: 15px;">📋 Lista abonamentelor (create + reînnoite)</h4>
+        <div style="max-height: 250px; overflow-y: auto;">
+            ${currentMonthClients.map(client => `
+                <div class="client-card" style="margin-bottom: 8px; cursor: pointer; border-left: 4px solid ${client._reportType === 'CREAT' ? '#00ff88' : '#ffaa33'};" onclick="showClientDetails(${client.id})">
+                    <div style="min-width: 50px;">
+                        ${client.photo ? `<img src="${client.photo}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : '<div style="width: 50px; height: 50px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>'}
+                    </div>
+                    <div style="flex: 1;">
+                        <p style="font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
+                        <p style="font-size: 11px; margin: 2px 0;">📦 ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
+                        <p style="font-size: 10px; color: ${client._reportType === 'CREAT' ? '#00ff88' : '#ffaa33'};">
+                            ${client._reportType === 'CREAT' ? '🆕 CREAT' : '🔄 REÎNNOIT'} 
+                            ${client.createdAt ? `| 📅 ${new Date(client.createdAt).toLocaleDateString('ro-RO')}` : ''}
+                        </p>
+                    </div>
+                </div>
+            `).join('')}
+            ${currentMonthClients.length === 0 ? '<p style="color: #888; text-align: center;">Nu există abonamente în luna curentă</p>' : ''}
+        </div>
+    `;
 }
 
 function compareYears() {
     const today = new Date();
     const currentYearStart = new Date(today.getFullYear(), 0, 1);
     const currentYearEnd = new Date(today.getFullYear(), 11, 31);
+    currentYearEnd.setHours(23, 59, 59, 999);
     
     const lastYearStart = new Date(today.getFullYear() - 1, 0, 1);
     const lastYearEnd = new Date(today.getFullYear() - 1, 11, 31);
+    lastYearEnd.setHours(23, 59, 59, 999);
     
-    const currentYearClients = clients.filter(c => {
-        const createdDate = new Date(c.createdAt);
-        return createdDate >= currentYearStart && createdDate <= currentYearEnd;
+    // Funcție pentru a verifica dacă un client este în perioada selectată
+    function isClientInPeriod(client, start, end) {
+        // Verifică createdAt (creare)
+        if (client.createdAt) {
+            const d = new Date(client.createdAt);
+            if (d >= start && d <= end) return true;
+        }
+        // Verifică updatedAt (reînnoire)
+        if (client.updatedAt) {
+            const d = new Date(client.updatedAt);
+            if (d >= start && d <= end) return true;
+        }
+        // Verifică startDate (început abonament)
+        if (client.startDate) {
+            const d = new Date(client.startDate);
+            if (d >= start && d <= end) return true;
+        }
+        return false;
+    }
+    
+    const currentYearClients = clients.filter(c => isClientInPeriod(c, currentYearStart, currentYearEnd));
+    const lastYearClients = clients.filter(c => isClientInPeriod(c, lastYearStart, lastYearEnd));
+    
+    // Adaugă tipuri pentru afișare
+    currentYearClients.forEach(c => {
+        if (c.updatedAt && new Date(c.updatedAt) >= currentYearStart && new Date(c.updatedAt) <= currentYearEnd) {
+            c._reportType = 'REÎNNOIT';
+        } else if (c.createdAt && new Date(c.createdAt) >= currentYearStart && new Date(c.createdAt) <= currentYearEnd) {
+            c._reportType = 'CREAT';
+        } else if (c.startDate && new Date(c.startDate) >= currentYearStart && new Date(c.startDate) <= currentYearEnd) {
+            c._reportType = 'ÎNCEPUT';
+        }
     });
     
-    const lastYearClients = clients.filter(c => {
-        const createdDate = new Date(c.createdAt);
-        return createdDate >= lastYearStart && createdDate <= lastYearEnd;
+    lastYearClients.forEach(c => {
+        if (c.updatedAt && new Date(c.updatedAt) >= lastYearStart && new Date(c.updatedAt) <= lastYearEnd) {
+            c._reportType = 'REÎNNOIT';
+        } else if (c.createdAt && new Date(c.createdAt) >= lastYearStart && new Date(c.createdAt) <= lastYearEnd) {
+            c._reportType = 'CREAT';
+        } else if (c.startDate && new Date(c.startDate) >= lastYearStart && new Date(c.startDate) <= lastYearEnd) {
+            c._reportType = 'ÎNCEPUT';
+        }
     });
     
     const currentYearActions = auditLog.filter(log => {
@@ -1599,29 +1891,57 @@ function compareYears() {
             <div style="flex: 1; background: rgba(0, 255, 136, 0.1); padding: 15px; border-radius: 12px; text-align: center;">
                 <h4 style="color: #00ff88;">📅 Anul ${currentYearStart.getFullYear()}</h4>
                 <div style="font-size: 28px; font-weight: bold;">${currentYearClients.length}</div>
-                <div>Abonamente create</div>
+                <div>Abonamente (create + reînnoite)</div>
+                <div style="font-size: 14px; margin-top: 8px;">
+                    ${currentYearClients.filter(c => c._reportType === 'CREAT').length > 0 ? `🆕 Create: ${currentYearClients.filter(c => c._reportType === 'CREAT').length}` : ''}
+                    ${currentYearClients.filter(c => c._reportType === 'REÎNNOIT').length > 0 ? ` | 🔄 Reînnoite: ${currentYearClients.filter(c => c._reportType === 'REÎNNOIT').length}` : ''}
+                </div>
                 <div style="font-size: 20px; margin-top: 10px;">${currentYearActions.length}</div>
                 <div>Acțiuni înregistrate</div>
             </div>
             <div style="flex: 1; background: rgba(100, 150, 255, 0.1); padding: 15px; border-radius: 12px; text-align: center;">
                 <h4 style="color: #6496ff;">📅 Anul ${lastYearStart.getFullYear()}</h4>
                 <div style="font-size: 28px; font-weight: bold;">${lastYearClients.length}</div>
-                <div>Abonamente create</div>
+                <div>Abonamente (create + reînnoite)</div>
+                <div style="font-size: 14px; margin-top: 8px;">
+                    ${lastYearClients.filter(c => c._reportType === 'CREAT').length > 0 ? `🆕 Create: ${lastYearClients.filter(c => c._reportType === 'CREAT').length}` : ''}
+                    ${lastYearClients.filter(c => c._reportType === 'REÎNNOIT').length > 0 ? ` | 🔄 Reînnoite: ${lastYearClients.filter(c => c._reportType === 'REÎNNOIT').length}` : ''}
+                </div>
                 <div style="font-size: 20px; margin-top: 10px;">${lastYearActions.length}</div>
                 <div>Acțiuni înregistrate</div>
             </div>
         </div>
         <div style="margin-top: 15px; text-align: center; padding: 10px; background: rgba(255, 140, 0, 0.1); border-radius: 8px;">
             ${currentYearClients.length > lastYearClients.length ? 
-                `📈 Creștere cu ${((currentYearClients.length - lastYearClients.length) / lastYearClients.length * 100).toFixed(1)}% față de anul trecut` : 
+                `📈 Creștere cu ${((currentYearClients.length - lastYearClients.length) / (lastYearClients.length || 1) * 100).toFixed(1)}% față de anul trecut` : 
                 currentYearClients.length < lastYearClients.length ?
-                `📉 Scădere cu ${((lastYearClients.length - currentYearClients.length) / lastYearClients.length * 100).toFixed(1)}% față de anul trecut` :
+                `📉 Scădere cu ${((lastYearClients.length - currentYearClients.length) / (lastYearClients.length || 1) * 100).toFixed(1)}% față de anul trecut` :
                 `📊 Nivel similar cu anul trecut`}
         </div>
     `;
     
     document.getElementById('customPeriodStats').innerHTML = statsHtml;
-    document.getElementById('customPeriodList').innerHTML = '';
+    document.getElementById('customPeriodList').innerHTML = `
+        <h4 style="color: #ffaa33; margin-top: 15px;">📋 Lista abonamentelor din ${currentYearStart.getFullYear()} (create + reînnoite)</h4>
+        <div style="max-height: 250px; overflow-y: auto;">
+            ${currentYearClients.map(client => `
+                <div class="client-card" style="margin-bottom: 8px; cursor: pointer; border-left: 4px solid ${client._reportType === 'CREAT' ? '#00ff88' : '#ffaa33'};" onclick="showClientDetails(${client.id})">
+                    <div style="min-width: 50px;">
+                        ${client.photo ? `<img src="${client.photo}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : '<div style="width: 50px; height: 50px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>'}
+                    </div>
+                    <div style="flex: 1;">
+                        <p style="font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
+                        <p style="font-size: 11px; margin: 2px 0;">📦 ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
+                        <p style="font-size: 10px; color: ${client._reportType === 'CREAT' ? '#00ff88' : '#ffaa33'};">
+                            ${client._reportType === 'CREAT' ? '🆕 CREAT' : '🔄 REÎNNOIT'} 
+                            ${client.createdAt ? `| 📅 ${new Date(client.createdAt).toLocaleDateString('ro-RO')}` : ''}
+                        </p>
+                    </div>
+                </div>
+            `).join('')}
+            ${currentYearClients.length === 0 ? '<p style="color: #888; text-align: center;">Nu există abonamente în anul curent</p>' : ''}
+        </div>
+    `;
 }
 
 function filterSubscriptionsReport() {
@@ -2626,6 +2946,7 @@ function confirmRenewal() {
     originalClient.startDate = startDate.toISOString().split('T')[0];
     originalClient.duration = days;
     originalClient.updatedAt = new Date().toISOString();
+    originalClient.createdAt = new Date().toISOString();
     
     originalClient.usedToday = false;
     originalClient.isInGym = false;
