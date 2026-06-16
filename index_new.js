@@ -121,9 +121,9 @@ let users = JSON.parse(localStorage.getItem('users')) || [
 
 const SUBSCRIPTIONS = {
     'elev_standard': { name: 'Elev Standard', duration: 30, startHour: 7, endHour: 17, endHourStrict: 16, endMinuteStrict: 40, category: 'Elev', type: 'Standard' },
-    'elev_full': { name: 'Elev Full', duration: 30, startHour: 7, endHour: 21, category: 'Elev', type: 'Full' },
+    'elev_full': { name: 'Elev Full', duration: 30, startHour: 7, endHour: 22, category: 'Elev', type: 'Full' },
     'adult_standard': { name: 'Adult Standard', duration: 30, startHour: 7, endHour: 17, endHourStrict: 16, endMinuteStrict: 40, category: 'Adult', type: 'Standard' },
-    'adult_full': { name: 'Adult Full', duration: 30, startHour: 7, endHour: 21, category: 'Adult', type: 'Full' },
+    'adult_full': { name: 'Adult Full', duration: 30, startHour: 7, endHour: 22, category: 'Adult', type: 'Full' },
     '2weeks': { name: '2 Săptămâni', duration: 15, startHour: 7, endHour: 17, endHourStrict: 16, endMinuteStrict: 40, category: 'Special', type: '2 Weeks' }
 };
 
