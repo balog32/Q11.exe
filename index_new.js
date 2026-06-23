@@ -2082,7 +2082,7 @@ function initClientCards() {
     const sortedGymClients = [...inGymClients].sort((a, b) => {
         const timeA = clientCheckIns[a.id] ? new Date(clientCheckIns[a.id]).getTime() : 0;
         const timeB = clientCheckIns[b.id] ? new Date(clientCheckIns[b.id]).getTime() : 0;
-        return timeB - timeA; // Cel mai vechi primul
+        return timeB - timeA; // Cel mai recent primul
     });
     
     const gymList = document.getElementById('gymList');
@@ -2111,17 +2111,19 @@ function initClientCards() {
     document.getElementById('gymCount').textContent = sortedGymClients.length;
 }
 
-function getClientDaysLeft(client) {
-    // Folosește data de expirare, nu data de început
-    const expirationDate = new Date(client.expiration);
-    expirationDate.setHours(23, 59, 59, 999); // Expiră la sfârșitul zilei
+  function getClientDaysLeft(client) {
+    if (!client.expiration) return 0;
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    const timeDiff = expirationDate - today;
-    const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+    const expirationDate = new Date(client.expiration);
+    expirationDate.setHours(0, 0, 0, 0);
     
-    return daysLeft < 0 ? 0 : daysLeft;
+    const timeDiff = expirationDate - today;
+    const daysLeft = Math.floor(timeDiff / (1000 * 60 * 60 * 24)) + 1;
+    
+    return daysLeft <= 0 ? 0 : daysLeft;
 }
 
 function onClientClick(clientId, isAllowed) {
@@ -2367,36 +2369,25 @@ function checkClientAccess(client) {
     const subInfo = SUBSCRIPTIONS[client.subscription];
     
     if (!subInfo) {
-        return { allowed: false, message: 'Abonament invalid', status: 'expired' };
+        return { allowed: false, message: 'Abonament invalid', status: 'expired', daysLeft: 0 };
     }
 
     if (!client.isPaid) {
-        return { allowed: false, message: 'Neachitat', status: 'expired' };
+        return { allowed: false, message: 'Neachitat', status: 'expired', daysLeft: 0 };
     }
 
-    // Calculează zilele rămase
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const expirationDate = new Date(client.expiration);
-    expirationDate.setHours(0, 0, 0, 0);
-    
-    // Diferența în zile
-    const timeDiff = expirationDate - today;
-    const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-    
-    // Dacă a expirat (daysLeft <= 0)
-    if (daysLeft <= 0) {
+    const daysLeft = getClientDaysLeft(client);
+
+    if (daysLeft === 0) {
         return { allowed: false, message: 'Expirat', status: 'expired', daysLeft: 0 };
     }
-    
-    // Dacă expiră în 1-3 zile
+
     if (daysLeft <= 3) {
-        return { allowed: true, message: `Expiră în ${daysLeft} zile`, status: 'warning', daysLeft };
+        return { allowed: true, message: `Expiră în ${daysLeft} ${daysLeft === 1 ? 'zi' : 'zile'}`, status: 'warning', daysLeft };
     }
 
-    // Verifică programul
     if (currentHour < subInfo.startHour || currentHour >= subInfo.endHour) {
-        return { allowed: false, message: 'În afara programului', status: 'expired', daysLeft };
+        return { allowed: false, message: 'În afara programului', status: 'schedule', daysLeft };
     }
 
     return { allowed: true, message: 'Acces permis', status: 'active', daysLeft };
@@ -2561,169 +2552,404 @@ function openClientHistory(clientId) {
     
     const history = clientHistory[clientId] || [];
     
+    // Calculează statistici
+    const checkins = history.filter(h => h.type === 'checkin');
+    const checkouts = history.filter(h => h.type === 'checkout');
+    const uniqueDays = [...new Set(checkins.map(h => h.date))];
+    
+    // Grupează pe luni
+    const byMonth = {};
+    checkins.forEach(h => {
+        const month = h.date.substring(0, 7);
+        if (!byMonth[month]) byMonth[month] = new Set();
+        byMonth[month].add(h.date);
+    });
+    
+    const months = Object.keys(byMonth).sort().reverse();
+    const currentMonth = new Date().toISOString().substring(0, 7);
+    const lastMonth = new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().substring(0, 7);
+    
+    const daysCurrentMonth = byMonth[currentMonth] ? byMonth[currentMonth].size : 0;
+    const daysLastMonth = byMonth[lastMonth] ? byMonth[lastMonth].size : 0;
+    
+    // Calculează ore de intrare
+    const hourCounts = {};
+    checkins.forEach(h => {
+        const hour = h.time ? h.time.substring(0, 2) : '00';
+        hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+    });
+    
     const html = `
-        <div class="box scroll-box" style="width: 700px; max-width: 95%;">
+        <div class="box scroll-box" style="width: 900px; max-width: 95%;">
             <h2 style="color: #ffaa33;">📜 ISTORIC CLIENT</h2>
             
-            <div style="display: flex; gap: 15px; margin-bottom: 20px; padding: 15px; background: rgba(255, 140, 0, 0.1); border-radius: 15px;">
-                <div style="min-width: 80px;">
-                    ${client.photo ? `<img src="${client.photo}" style="width: 80px; height: 80px; border-radius: 15px; object-fit: cover;">` : '<div style="width: 80px; height: 80px; background: #333; border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 40px;">👤</div>'}
+            <!-- Header client -->
+            <div style="display: flex; gap: 15px; margin-bottom: 20px; padding: 15px; background: rgba(255,140,0,0.1); border-radius: 15px; align-items: center;">
+                <div>
+                    ${client.photo ? `<img src="${client.photo}" style="width: 80px; height: 80px; border-radius: 15px; object-fit: cover;">` : '<div style="width:80px;height:80px;background:#333;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:40px;">👤</div>'}
                 </div>
                 <div>
                     <p style="font-size: 20px; font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
                     <p style="font-size: 12px; color: #888; margin: 5px 0;">🏷️ Tag: ${client.tag || 'N/A'}</p>
-                    <p style="font-size: 12px; color: #ffaa33;">📦 Abonament curent: ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
+                    <p style="font-size: 12px; color: #ffaa33;">📦 ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
+                </div>
+                <div style="margin-left: auto; display: flex; gap: 15px; flex-wrap: wrap;">
+                    <div style="text-align: center; background: rgba(0,255,136,0.1); padding: 12px 20px; border-radius: 12px;">
+                        <div style="font-size: 28px; font-weight: bold; color: #00ff88;">${uniqueDays.length}</div>
+                        <div style="font-size: 11px; color: #00ff88;">Zile totale</div>
+                    </div>
+                    <div style="text-align: center; background: rgba(100,150,255,0.1); padding: 12px 20px; border-radius: 12px;">
+                        <div style="font-size: 28px; font-weight: bold; color: #6496ff;">${daysCurrentMonth}</div>
+                        <div style="font-size: 11px; color: #6496ff;">Luna aceasta</div>
+                    </div>
+                    <div style="text-align: center; background: rgba(255,170,0,0.1); padding: 12px 20px; border-radius: 12px;">
+                        <div style="font-size: 28px; font-weight: bold; color: #ffaa33;">${daysLastMonth}</div>
+                        <div style="font-size: 11px; color: #ffaa33;">Luna trecută</div>
+                    </div>
                 </div>
             </div>
             
+            <!-- Tab-uri -->
             <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
-                <button onclick="switchHistoryTab('all', ${clientId})" id="historyTabAll" style="flex: 1; padding: 12px; background: #ff8c00; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold;">📋 Tot istoricul</button>
-                <button onclick="switchHistoryTab('access', ${clientId})" id="historyTabAccess" style="flex: 1; padding: 12px; background: transparent; border: 2px solid #ffaa33; border-radius: 10px; cursor: pointer; color: #ffaa33; font-weight: bold;">🚪 Intrări/Ieșiri</button>
-                <button onclick="switchHistoryTab('subscriptions', ${clientId})" id="historyTabSubs" style="flex: 1; padding: 12px; background: transparent; border: 2px solid #ffaa33; border-radius: 10px; cursor: pointer; color: #ffaa33; font-weight: bold;">📅 Abonamente</button>
-                <button onclick="switchHistoryTab('stats', ${clientId})" id="historyTabStats" style="flex: 1; padding: 12px; background: transparent; border: 2px solid #ffaa33; border-radius: 10px; cursor: pointer; color: #ffaa33; font-weight: bold;">📊 Statistici</button>
+                <button onclick="switchHistoryTab('calendar', ${clientId})" id="historyTabCalendar" style="flex:1; padding:12px; background:#ff8c00; color:white; border:none; border-radius:10px; cursor:pointer; font-weight:bold;">📅 Calendar</button>
+                <button onclick="switchHistoryTab('grafice', ${clientId})" id="historyTabGrafice" style="flex:1; padding:12px; background:transparent; border:2px solid #ffaa33; border-radius:10px; cursor:pointer; color:#ffaa33; font-weight:bold;">📊 Grafice</button>
+                <button onclick="switchHistoryTab('access', ${clientId})" id="historyTabAccess" style="flex:1; padding:12px; background:transparent; border:2px solid #ffaa33; border-radius:10px; cursor:pointer; color:#ffaa33; font-weight:bold;">🚪 Intrări/Ieșiri</button>
+                <button onclick="switchHistoryTab('subscriptions', ${clientId})" id="historyTabSubscriptions" style="flex:1; padding:12px; background:transparent; border:2px solid #ffaa33; border-radius:10px; cursor:pointer; color:#ffaa33; font-weight:bold;">📦 Abonamente</button>
+                <button onclick="switchHistoryTab('stats', ${clientId})" id="historyTabStats" style="flex:1; padding:12px; background:transparent; border:2px solid #ffaa33; border-radius:10px; cursor:pointer; color:#ffaa33; font-weight:bold;">📈 Statistici</button>
             </div>
             
-            <div id="historyContent" style="max-height: 400px; overflow-y: auto;">
-                ${renderHistoryContent(history, 'all', client)}
+            <div id="historyContent" style="max-height: 500px; overflow-y: auto;">
+                ${renderHistoryContent(history, 'calendar', client)}
             </div>
             
             <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button onclick="exportClientHistory(${clientId})" style="flex: 1; background: #00ff88; color: black;">📥 Exportă istoric</button>
-                <button onclick="showClientDetails(${clientId})" style="flex: 1;">◀ Înapoi la client</button>
+                <button onclick="exportClientHistory(${clientId})" style="flex:1; background:#00ff88; color:black; padding:10px; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">📥 Exportă CSV</button>
+                <button onclick="showClientDetails(${clientId})" style="flex:1; background:#6496ff; color:white; padding:10px; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">◀ Înapoi</button>
             </div>
         </div>
     `;
     
     openModal(html);
     window.currentHistoryClientId = clientId;
-    window.currentHistoryData = history;
 }
 
 function renderHistoryContent(history, type, client) {
-    if (type === 'all') {
-        if (history.length === 0) {
-            return '<p style="color: #888; text-align: center; padding: 40px;">📭 Niciun istoric disponibil</p>';
-        }
-        
-        const byDate = {};
-        history.forEach(entry => {
-            if (!byDate[entry.date]) byDate[entry.date] = [];
-            byDate[entry.date].push(entry);
-        });
-        
-        const sortedDates = Object.keys(byDate).sort().reverse();
-        
-        return sortedDates.map(date => `
-            <div style="margin-bottom: 20px;">
-                <div style="background: rgba(255, 140, 0, 0.2); padding: 8px 12px; border-radius: 8px; margin-bottom: 10px;">
-                    <strong style="color: #ffaa33;">📅 ${new Date(date).toLocaleDateString('ro-RO')}</strong>
-                </div>
-                ${byDate[date].map(entry => `
-                    <div style="padding: 12px; margin-bottom: 8px; background: rgba(30, 41, 59, 0.6); border-radius: 10px; border-left: 4px solid ${getHistoryTypeColor(entry.type)};">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div style="display: flex; align-items: center; gap: 10px;">
-                                <span style="font-size: 20px;">${getHistoryTypeIcon(entry.type)}</span>
-                                <span style="font-weight: bold; color: #fff;">${getHistoryTypeName(entry.type)}</span>
-                            </div>
-                            <span style="color: #888; font-size: 12px;">🕐 ${entry.time}</span>
-                        </div>
-                        <p style="margin: 8px 0 0 0; color: #ccc; font-size: 13px;">${entry.details}</p>
-                        <p style="margin: 5px 0 0 0; color: #6496ff; font-size: 11px;">👤 ${entry.user}</p>
-                    </div>
-                `).join('')}
-            </div>
-        `).join('');
-    }
+    const checkins = history.filter(h => h.type === 'checkin');
+    const uniqueDays = [...new Set(checkins.map(h => h.date))];
     
-    if (type === 'access') {
-        const accessHistory = history.filter(h => h.type === 'checkin' || h.type === 'checkout');
-        if (accessHistory.length === 0) {
-            return '<p style="color: #888; text-align: center; padding: 40px;">🚪 Nicio intrare/ieșire înregistrată</p>';
+    // Grupează pe luni
+    const byMonth = {};
+    checkins.forEach(h => {
+        const month = h.date.substring(0, 7);
+        if (!byMonth[month]) byMonth[month] = new Set();
+        byMonth[month].add(h.date);
+    });
+    
+    // ════════ CALENDAR ════════
+    if (type === 'calendar') {
+        const months = Object.keys(byMonth).sort().reverse();
+        const allMonths = [];
+        
+        // Adaugă și luna curentă și luna trecută chiar dacă nu are prezențe
+        const now = new Date();
+        for (let i = 0; i < 3; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const key = d.toISOString().substring(0, 7);
+            if (!allMonths.includes(key)) allMonths.push(key);
         }
+        months.forEach(m => { if (!allMonths.includes(m)) allMonths.push(m); });
+        allMonths.sort().reverse();
         
-        let sessions = [];
-        let currentSession = null;
+        const monthNames = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'];
+        const dayNames = ['Lu','Ma','Mi','Jo','Vi','Sâ','Du'];
         
-        accessHistory.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        
-        accessHistory.forEach(entry => {
-            if (entry.type === 'checkin') {
-                if (currentSession) sessions.push(currentSession);
-                currentSession = { checkin: entry, checkout: null };
-            } else if (entry.type === 'checkout' && currentSession && !currentSession.checkout) {
-                currentSession.checkout = entry;
-                sessions.push(currentSession);
-                currentSession = null;
-            }
-        });
-        
-        if (currentSession) sessions.push(currentSession);
-        
-        return sessions.map(session => {
-            const checkinTime = new Date(session.checkin.timestamp).toLocaleTimeString('ro-RO');
-            const checkoutTime = session.checkout ? new Date(session.checkout.timestamp).toLocaleTimeString('ro-RO') : 'În sală';
-            const duration = session.checkout ? 
-                Math.round((new Date(session.checkout.timestamp) - new Date(session.checkin.timestamp)) / 60000) : 
-                'N/A';
+        return allMonths.map(monthKey => {
+            const [year, month] = monthKey.split('-').map(Number);
+            const daysInMonth = new Date(year, month, 0).getDate();
+            const firstDay = new Date(year, month - 1, 1).getDay();
+            const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+            const presentDays = byMonth[monthKey] ? byMonth[monthKey].size : 0;
             
-            return `
-                <div style="padding: 15px; margin-bottom: 12px; background: rgba(0, 255, 136, 0.1); border-radius: 12px;">
-                    <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #00ff88;">✅ Intrare: ${checkinTime}</span>
-                        <span style="color: #6496ff;">❌ Ieșire: ${checkoutTime}</span>
+            let calendarHTML = `
+                <div style="margin-bottom: 25px; background: rgba(30,41,59,0.6); border-radius: 15px; padding: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="color: #ffaa33; margin: 0;">${monthNames[month-1]} ${year}</h3>
+                        <div style="display: flex; gap: 15px;">
+                            <span style="background: rgba(0,255,136,0.2); color: #00ff88; padding: 5px 15px; border-radius: 20px; font-weight: bold;">✅ ${presentDays} zile prezent</span>
+                            <span style="background: rgba(255,107,107,0.2); color: #ff6b6b; padding: 5px 15px; border-radius: 20px; font-weight: bold;">❌ ${daysInMonth - presentDays} zile absent</span>
+                        </div>
                     </div>
-                    <p style="margin: 10px 0 0 0; color: #ffaa33;">⏱️ Durată: ${duration !== 'N/A' ? `${duration} minute` : duration}</p>
-                </div>
+                    <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center;">
             `;
+            
+            // Zilele săptămânii
+            dayNames.forEach(d => {
+                calendarHTML += `<div style="color: #888; font-size: 11px; font-weight: bold; padding: 5px 0;">${d}</div>`;
+            });
+            
+            // Celule goale la început
+            for (let i = 0; i < startOffset; i++) {
+                calendarHTML += `<div></div>`;
+            }
+            
+            // Zilele lunii
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                const isPresent = byMonth[monthKey] && byMonth[monthKey].has(dateStr);
+                const isToday = dateStr === new Date().toISOString().split('T')[0];
+                
+                // Găsește ora intrării pentru această zi
+                const checkinEntry = checkins.find(h => h.date === dateStr);
+                const hour = checkinEntry && checkinEntry.time ? checkinEntry.time.substring(0,5) : '';
+                
+                calendarHTML += `
+                    <div style="
+                        background: ${isPresent ? 'rgba(0,255,136,0.25)' : 'rgba(255,255,255,0.03)'};
+                        border: ${isToday ? '2px solid #ffaa33' : isPresent ? '1px solid rgba(0,255,136,0.4)' : '1px solid rgba(255,255,255,0.05)'};
+                        border-radius: 8px;
+                        padding: 6px 2px;
+                        min-height: 45px;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                    ">
+                        <span style="font-size: 13px; font-weight: bold; color: ${isPresent ? '#00ff88' : isToday ? '#ffaa33' : '#666'};">${day}</span>
+                        ${isPresent ? `<span style="font-size: 9px; color: #00cc66;">${hour}</span>` : ''}
+                    </div>
+                `;
+            }
+            
+            calendarHTML += `</div></div>`;
+            return calendarHTML;
         }).join('');
     }
     
-    if (type === 'subscriptions') {
-        const subsHistory = history.filter(h => h.type === 'subscription_created' || h.type === 'subscription_extended');
-        if (subsHistory.length === 0) {
-            return '<p style="color: #888; text-align: center; padding: 40px;">📅 Niciun abonament înregistrat</p>';
-        }
+    // ════════ GRAFICE ════════
+    if (type === 'grafice') {
+        const months = Object.keys(byMonth).sort();
+        const monthNames = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'];
         
-        return subsHistory.map(entry => `
-            <div style="padding: 15px; margin-bottom: 12px; background: rgba(100, 150, 255, 0.1); border-radius: 12px; border-left: 4px solid #6496ff;">
-                <div style="display: flex; justify-content: space-between;">
-                    <span style="font-weight: bold; color: #6496ff;">${entry.type === 'subscription_created' ? '➕ CREARE ABONAMENT' : '✏️ PRELUNGIRE'}</span>
-                    <span style="color: #888;">${entry.date} ${entry.time}</span>
-                </div>
-                <p style="margin: 8px 0 0 0;">${entry.details}</p>
-                <p style="margin: 5px 0 0 0; color: #ffaa33;">👤 ${entry.user}</p>
-            </div>
-        `).join('');
-    }
-    
-    if (type === 'stats') {
-        const totalVisits = history.filter(h => h.type === 'checkin').length;
-        const totalSubscriptionChanges = history.filter(h => h.type === 'subscription_created' || h.type === 'subscription_extended').length;
-        const firstVisit = history.find(h => h.type === 'checkin');
-        const lastVisit = [...history].reverse().find(h => h.type === 'checkin');
-        const activeDays = new Set(history.filter(h => h.type === 'checkin').map(h => h.date)).size;
+        // Grafic bare - zile pe lună
+        const maxDays = Math.max(...Object.values(byMonth).map(s => s.size), 1);
+        
+        // Grafic ore
+        const hourCounts = {};
+        checkins.forEach(h => {
+            const hour = h.time ? parseInt(h.time.substring(0,2)) : 0;
+            hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+        });
+        const maxHour = Math.max(...Object.values(hourCounts), 1);
+        
+        // Comparație luna curentă vs luna trecută
+        const now = new Date();
+        const currentMonth = now.toISOString().substring(0, 7);
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().substring(0, 7);
+        const daysCurrentMonth = byMonth[currentMonth] ? byMonth[currentMonth].size : 0;
+        const daysLastMonth = byMonth[lastMonth] ? byMonth[lastMonth].size : 0;
+        const diff = daysCurrentMonth - daysLastMonth;
         
         return `
-            <div style="padding: 20px;">
-                <div style="background: rgba(0, 255, 136, 0.1); border-radius: 15px; padding: 15px; margin-bottom: 15px;">
-                    <h4 style="color: #00ff88; margin-bottom: 15px;">🏋️ Statistici acces sală</h4>
-                    <p><strong>📊 Total vizite:</strong> ${totalVisits}</p>
-                    <p><strong>📅 Zile active:</strong> ${activeDays}</p>
-                    ${firstVisit ? `<p><strong>🌟 Prima vizită:</strong> ${new Date(firstVisit.timestamp).toLocaleString('ro-RO')}</p>` : ''}
-                    ${lastVisit ? `<p><strong>🕐 Ultima vizită:</strong> ${new Date(lastVisit.timestamp).toLocaleString('ro-RO')}</p>` : ''}
+            <div style="padding: 10px;">
+                
+                <!-- Grafic zile pe lună -->
+                <div style="background: rgba(30,41,59,0.6); border-radius: 15px; padding: 15px; margin-bottom: 20px;">
+                    <h4 style="color: #ffaa33; margin-bottom: 15px;">📊 Zile prezență pe lună</h4>
+                    <div style="display: flex; align-items: flex-end; gap: 8px; height: 150px; padding: 0 10px;">
+                        ${months.map(m => {
+                            const [y, mo] = m.split('-');
+                            const days = byMonth[m].size;
+                            const height = Math.round((days / maxDays) * 130);
+                            const isCurrentMonth = m === currentMonth;
+                            return `
+                                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;">
+                                    <span style="font-size: 11px; color: ${isCurrentMonth ? '#00ff88' : '#ffaa33'}; font-weight: bold;">${days}</span>
+                                    <div style="width: 100%; height: ${height}px; background: ${isCurrentMonth ? '#00ff88' : '#6496ff'}; border-radius: 6px 6px 0 0; min-height: 4px; transition: height 0.3s;"></div>
+                                    <span style="font-size: 10px; color: #888;">${monthNames[parseInt(mo)-1]}</span>
+                                </div>
+                            `;
+                        }).join('')}
+                        ${months.length === 0 ? '<p style="color:#888;text-align:center;width:100%;">Nicio prezență înregistrată</p>' : ''}
+                    </div>
                 </div>
                 
-                <div style="background: rgba(100, 150, 255, 0.1); border-radius: 15px; padding: 15px;">
-                    <h4 style="color: #6496ff; margin-bottom: 15px;">📦 Statistici abonamente</h4>
-                    <p><strong>📅 Total abonamente/prelungiri:</strong> ${totalSubscriptionChanges}</p>
-                    <p><strong>📅 Abonament curent:</strong> ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
-                    <p><strong>📅 Expiră la:</strong> ${new Date(client.expiration).toLocaleDateString('ro-RO')}</p>
+                <!-- Comparație luna curentă vs trecută -->
+                <div style="background: rgba(30,41,59,0.6); border-radius: 15px; padding: 15px; margin-bottom: 20px;">
+                    <h4 style="color: #ffaa33; margin-bottom: 15px;">📈 Comparație luni</h4>
+                    <div style="display: flex; gap: 15px;">
+                        <div style="flex: 1; text-align: center; background: rgba(0,255,136,0.1); padding: 15px; border-radius: 12px;">
+                            <div style="font-size: 36px; font-weight: bold; color: #00ff88;">${daysCurrentMonth}</div>
+                            <div style="color: #00ff88; font-size: 12px;">Luna aceasta</div>
+                        </div>
+                        <div style="flex: 1; text-align: center; background: rgba(100,150,255,0.1); padding: 15px; border-radius: 12px;">
+                            <div style="font-size: 36px; font-weight: bold; color: #6496ff;">${daysLastMonth}</div>
+                            <div style="color: #6496ff; font-size: 12px;">Luna trecută</div>
+                        </div>
+                        <div style="flex: 1; text-align: center; background: ${diff >= 0 ? 'rgba(0,255,136,0.1)' : 'rgba(255,107,107,0.1)'}; padding: 15px; border-radius: 12px;">
+                            <div style="font-size: 36px; font-weight: bold; color: ${diff >= 0 ? '#00ff88' : '#ff6b6b'};">${diff >= 0 ? '+' : ''}${diff}</div>
+                            <div style="color: #888; font-size: 12px;">${diff >= 0 ? '📈 Mai activ' : '📉 Mai puțin activ'}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Grafic ore intrare -->
+                <div style="background: rgba(30,41,59,0.6); border-radius: 15px; padding: 15px;">
+                    <h4 style="color: #ffaa33; margin-bottom: 15px;">🕐 Ore preferate de intrare</h4>
+                    <div style="display: flex; align-items: flex-end; gap: 4px; height: 100px;">
+                        ${Array.from({length: 16}, (_, i) => i + 6).map(hour => {
+                            const count = hourCounts[hour] || 0;
+                            const height = count > 0 ? Math.round((count / maxHour) * 80) : 0;
+                            return `
+                                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;">
+                                    ${count > 0 ? `<span style="font-size: 9px; color: #ffaa33;">${count}</span>` : ''}
+                                    <div style="width: 100%; height: ${height}px; background: #ffaa33; border-radius: 3px 3px 0 0; min-height: ${count > 0 ? '4' : '0'}px;"></div>
+                                    <span style="font-size: 9px; color: #666;">${hour}</span>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                    <p style="color: #888; font-size: 11px; margin-top: 8px; text-align: center;">Ora intrării (6:00 - 21:00)</p>
                 </div>
             </div>
         `;
     }
     
-    return '<p style="color: #888; text-align: center;">Selectează o categorie</p>';
+    // ════════ INTRĂRI/IEȘIRI ════════
+    if (type === 'access') {
+        const accessHistory = history.filter(h => h.type === 'checkin' || h.type === 'checkout');
+        if (accessHistory.length === 0) {
+            return '<p style="color:#888;text-align:center;padding:40px;">🚪 Nicio intrare/ieșire înregistrată</p>';
+        }
+        
+        // Grupează pe zile
+        const byDay = {};
+        accessHistory.forEach(h => {
+            if (!byDay[h.date]) byDay[h.date] = [];
+            byDay[h.date].push(h);
+        });
+        
+        const sortedDays = Object.keys(byDay).sort().reverse();
+        
+        return sortedDays.map(date => {
+            const entries = byDay[date];
+            const checkin = entries.find(e => e.type === 'checkin');
+            const checkout = entries.find(e => e.type === 'checkout');
+            
+            let duration = '';
+            if (checkin && checkout) {
+                const inTime = new Date(`${date}T${checkin.time}`);
+                const outTime = new Date(`${date}T${checkout.time}`);
+                const mins = Math.round((outTime - inTime) / 60000);
+                if (mins > 0) duration = `⏱️ ${mins} min`;
+            }
+            
+            return `
+                <div style="padding: 12px; margin-bottom: 8px; background: rgba(30,41,59,0.6); border-radius: 10px; border-left: 4px solid #00ff88;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="color: #ffaa33;">📅 ${new Date(date + 'T12:00:00').toLocaleDateString('ro-RO', {weekday:'long', day:'numeric', month:'long'})}</strong>
+                        ${duration ? `<span style="color: #6496ff; font-size: 12px;">${duration}</span>` : ''}
+                    </div>
+                    <div style="display: flex; gap: 20px; margin-top: 8px;">
+                        ${checkin ? `<span style="color: #00ff88;">✅ Intrare: ${checkin.time}</span>` : '<span style="color:#666;">✅ N/A</span>'}
+                        ${checkout ? `<span style="color: #ff6b6b;">❌ Ieșire: ${checkout.time}</span>` : '<span style="color:#666;">❌ N/A</span>'}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    // ════════ ABONAMENTE ════════
+    if (type === 'subscriptions') {
+        const subsHistory = history.filter(h => h.type === 'subscription_created' || h.type === 'subscription_extended');
+        if (subsHistory.length === 0) {
+            return '<p style="color:#888;text-align:center;padding:40px;">📦 Niciun abonament înregistrat</p>';
+        }
+        return subsHistory.map(entry => `
+            <div style="padding: 15px; margin-bottom: 12px; background: rgba(100,150,255,0.1); border-radius: 12px; border-left: 4px solid #6496ff;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="font-weight:bold; color:#6496ff;">${entry.type === 'subscription_created' ? '➕ CREARE' : '🔄 REÎNNOIRE'}</span>
+                    <span style="color:#888;">${entry.date} ${entry.time}</span>
+                </div>
+                <p style="margin: 8px 0 0 0;">${entry.details}</p>
+                <p style="margin: 5px 0 0 0; color:#ffaa33;">👤 ${entry.user}</p>
+            </div>
+        `).join('');
+    }
+    
+    // ════════ STATISTICI ════════
+    if (type === 'stats') {
+        const totalVisits = uniqueDays.length;
+        const firstVisit = checkins.length > 0 ? checkins[0] : null;
+        const lastVisit = checkins.length > 0 ? checkins[checkins.length-1] : null;
+        
+        // Zile pe săptămână
+        const dayOfWeekCount = {0:0,1:0,2:0,3:0,4:0,5:0,6:0};
+        checkins.forEach(h => {
+            const dow = new Date(h.date + 'T12:00:00').getDay();
+            dayOfWeekCount[dow]++;
+        });
+        const dowNames = ['Du','Lu','Ma','Mi','Jo','Vi','Sâ'];
+        const maxDow = Math.max(...Object.values(dayOfWeekCount), 1);
+        
+        // Cea mai activă lună
+        let bestMonth = '-';
+        let bestMonthDays = 0;
+        const monthNames = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'];
+        Object.entries(byMonth).forEach(([m, days]) => {
+            if (days.size > bestMonthDays) {
+                bestMonthDays = days.size;
+                const [y, mo] = m.split('-');
+                bestMonth = `${monthNames[parseInt(mo)-1]} ${y} (${days.size} zile)`;
+            }
+        });
+        
+        return `
+            <div style="padding: 10px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                    <div style="background: rgba(0,255,136,0.1); padding: 15px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 32px; font-weight: bold; color: #00ff88;">${totalVisits}</div>
+                        <div style="color: #00ff88;">Total zile la sală</div>
+                    </div>
+                    <div style="background: rgba(100,150,255,0.1); padding: 15px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 32px; font-weight: bold; color: #6496ff;">${Object.keys(byMonth).length}</div>
+                        <div style="color: #6496ff;">Luni active</div>
+                    </div>
+                    <div style="background: rgba(255,170,0,0.1); padding: 15px; border-radius: 12px;">
+                        <div style="font-size: 12px; color: #888;">🌟 Prima vizită</div>
+                        <div style="color: #ffaa33; font-weight: bold;">${firstVisit ? new Date(firstVisit.date + 'T12:00:00').toLocaleDateString('ro-RO') : 'N/A'}</div>
+                    </div>
+                    <div style="background: rgba(255,170,0,0.1); padding: 15px; border-radius: 12px;">
+                        <div style="font-size: 12px; color: #888;">🕐 Ultima vizită</div>
+                        <div style="color: #ffaa33; font-weight: bold;">${lastVisit ? new Date(lastVisit.date + 'T12:00:00').toLocaleDateString('ro-RO') : 'N/A'}</div>
+                    </div>
+                </div>
+                
+                <div style="background: rgba(30,41,59,0.6); border-radius: 15px; padding: 15px; margin-bottom: 15px;">
+                    <h4 style="color: #ffaa33; margin-bottom: 10px;">🏆 Cea mai activă lună</h4>
+                    <p style="color: #00ff88; font-weight: bold;">${bestMonth}</p>
+                </div>
+                
+                <div style="background: rgba(30,41,59,0.6); border-radius: 15px; padding: 15px;">
+                    <h4 style="color: #ffaa33; margin-bottom: 15px;">📅 Zile preferate din săptămână</h4>
+                    <div style="display: flex; align-items: flex-end; gap: 8px; height: 80px;">
+                        ${[1,2,3,4,5,6,0].map(dow => {
+                            const count = dayOfWeekCount[dow];
+                            const height = Math.round((count / maxDow) * 60);
+                            return `
+                                <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+                                    ${count > 0 ? `<span style="font-size:10px;color:#ffaa33;">${count}</span>` : ''}
+                                    <div style="width:100%; height:${height}px; background:#ffaa33; border-radius:4px 4px 0 0; min-height:${count>0?'4':'0'}px;"></div>
+                                    <span style="font-size:11px;color:#888;">${dowNames[dow]}</span>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    return '<p style="color:#888;text-align:center;">Selectează o categorie</p>';
 }
 
 function switchHistoryTab(tab, clientId) {
@@ -2734,19 +2960,25 @@ function switchHistoryTab(tab, clientId) {
         content.innerHTML = renderHistoryContent(history, tab, client);
     }
     
-    const tabs = ['all', 'access', 'subscriptions', 'stats'];
-    tabs.forEach(t => {
-        const btn = document.getElementById(`historyTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
-        if (btn) {
-            if (t === tab) {
-                btn.style.background = '#ff8c00';
-                btn.style.color = 'white';
-                btn.style.border = 'none';
-            } else {
-                btn.style.background = 'transparent';
-                btn.style.color = '#ffaa33';
-                btn.style.border = '2px solid #ffaa33';
-            }
+    const tabMap = {
+        'calendar': 'historyTabCalendar',
+        'grafice': 'historyTabGrafice', 
+        'access': 'historyTabAccess',
+        'subscriptions': 'historyTabSubscriptions',
+        'stats': 'historyTabStats'
+    };
+    
+    Object.entries(tabMap).forEach(([t, btnId]) => {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        if (t === tab) {
+            btn.style.background = '#ff8c00';
+            btn.style.color = 'white';
+            btn.style.border = 'none';
+        } else {
+            btn.style.background = 'transparent';
+            btn.style.color = '#ffaa33';
+            btn.style.border = '2px solid #ffaa33';
         }
     });
 }
@@ -2938,11 +3170,11 @@ function confirmRenewal() {
         `Reînnoire abonament: ${oldSubName} → ${newSubName} | Valabil de la ${startDate.toLocaleDateString('ro-RO')} până la ${expireDate.toLocaleDateString('ro-RO')} (${days} zile)`);
     
     originalClient.subscription = newSubType;
-    originalClient.expiration = expireDate.toISOString().split('T')[0];
-    originalClient.startDate = startDate.toISOString().split('T')[0];
+    originalClient.startDate = startDateStr; // folosește string-ul direct din input, fără conversie
+    originalClient.expiration = new Date(startDateStr + 'T12:00:00');
+    originalClient.expiration.setDate(originalClient.expiration.getDate() + days);
+    originalClient.expiration = originalClient.expiration.toISOString().split('T')[0];
     originalClient.duration = days;
-    originalClient.updatedAt = new Date().toISOString();
-    originalClient.createdAt = new Date().toISOString();
     
     originalClient.usedToday = false;
     originalClient.isInGym = false;
@@ -3003,14 +3235,17 @@ window.compareMonths = compareMonths;
 window.compareYears = compareYears;
 
 // Funcția getDaysLeft rămâne pentru compatibilitate
- function getDaysLeft(expiration) {
+function getDaysLeft(expiration) {
     if (!expiration) return 0;
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    
     const expirationDate = new Date(expiration);
     expirationDate.setHours(0, 0, 0, 0);
+    
     const timeDiff = expirationDate - today;
-    const daysLeft = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-    // Returnează 0 pentru expirat (daysLeft <= 0)
+    const daysLeft = Math.floor(timeDiff / (1000 * 60 * 60 * 24)) + 1;
+    
     return daysLeft <= 0 ? 0 : daysLeft;
 }
