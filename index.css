@@ -40,7 +40,7 @@ body::before {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 20px 40px;
+    padding: 10px 40px;
     background: linear-gradient(90deg, rgba(10, 10, 10, 0.95) 0%, rgba(26, 26, 26, 0.95) 50%, rgba(10, 10, 10, 0.95) 100%);
     border-top: 2px solid rgba(255, 140, 0, 0.4);
     border-bottom: 4px solid #ff8c00;
@@ -51,7 +51,7 @@ body::before {
     backdrop-filter: blur(10px);
     position: relative;
     min-height: 75px;
-    margin-top: 60px;
+    margin-top: 0;
     z-index: 99;
 }
 

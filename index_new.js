@@ -3,45 +3,94 @@
 // ║                    WITH NFC CARD READER                           ║
 // ╚═══════════════════════════════════════════════════════════════════╝
 
-//cititor //
-const nfcSocket = new WebSocket("ws://localhost:8080");
-window.nfcSocket = nfcSocket;  // face variabila globală
+// ════════════════════════════════════════════════════════════════════
+// 🔌 NFC WEBSOCKET CU RECONECTARE AUTOMATĂ
+// ════════════════════════════════════════════════════════════════════
 
-// Actualizare stare NFC
-nfcSocket.onopen = () => {
-    console.log("✅ WebSocket conectat");
+let nfcSocket = null;
+let nfcReconnectInterval = null;
+let nfcReconnectAttempts = 0;
+
+function connectNFC() {
+    if (nfcSocket && nfcSocket.readyState === WebSocket.OPEN) return;
+    
+    nfcSocket = new WebSocket("ws://localhost:8080");
+    window.nfcSocket = nfcSocket;
+    
+    nfcSocket.onopen = () => {
+        console.log("✅ WebSocket conectat");
+        nfcReconnectAttempts = 0;
+        
+        if (nfcReconnectInterval) {
+            clearInterval(nfcReconnectInterval);
+            nfcReconnectInterval = null;
+        }
+        
+        updateNFCStatus('online');
+        
+        if (nfcReconnectAttempts > 0) {
+            showNotification('✅ NFC reconectat cu succes!', 'success');
+        }
+    };
+    
+    nfcSocket.onerror = (error) => {
+        console.log("❌ WebSocket eroare:", error);
+        updateNFCStatus('offline');
+    };
+    
+    nfcSocket.onclose = () => {
+        console.log("🔌 WebSocket deconectat - reconectare automată...");
+        updateNFCStatus('standby');
+        startAutoReconnect();
+    };
+    
+    nfcSocket.onmessage = handleNFCMessage;
+}
+
+function startAutoReconnect() {
+    if (nfcReconnectInterval) return;
+    
+    nfcReconnectInterval = setInterval(() => {
+        nfcReconnectAttempts++;
+        console.log(`🔄 Încerc reconectare NFC... (tentativa ${nfcReconnectAttempts})`);
+        updateNFCStatus('reconnecting', nfcReconnectAttempts);
+        connectNFC();
+    }, 5000);
+}
+
+function updateNFCStatus(status, attempts = 0) {
     const nfcStatus = document.getElementById('nfc-status');
-    if (nfcStatus) {
-        nfcStatus.innerHTML = '🟢 NFC Online';
-        nfcStatus.style.background = 'rgba(0, 255, 136, 0.2)';
-        nfcStatus.style.color = '#00ff88';
-        nfcStatus.style.borderColor = '#00ff88';
+    if (!nfcStatus) return;
+    
+    switch(status) {
+        case 'online':
+            nfcStatus.innerHTML = '🟢 NFC Online';
+            nfcStatus.style.background = 'rgba(0, 255, 136, 0.2)';
+            nfcStatus.style.color = '#00ff88';
+            nfcStatus.style.borderColor = '#00ff88';
+            break;
+        case 'offline':
+            nfcStatus.innerHTML = '🔴 NFC Offline';
+            nfcStatus.style.background = 'rgba(255, 107, 107, 0.2)';
+            nfcStatus.style.color = '#ff6b6b';
+            nfcStatus.style.borderColor = '#ff6b6b';
+            break;
+        case 'standby':
+            nfcStatus.innerHTML = '🟡 NFC Standby';
+            nfcStatus.style.background = 'rgba(255, 170, 0, 0.2)';
+            nfcStatus.style.color = '#ffaa00';
+            nfcStatus.style.borderColor = '#ffaa00';
+            break;
+        case 'reconnecting':
+            nfcStatus.innerHTML = `🔄 Reconectare... (${attempts})`;
+            nfcStatus.style.background = 'rgba(255, 170, 0, 0.2)';
+            nfcStatus.style.color = '#ffaa00';
+            nfcStatus.style.borderColor = '#ffaa00';
+            break;
     }
-};
+}
 
-nfcSocket.onerror = (error) => {
-    console.log("❌ WebSocket eroare:", error);
-    const nfcStatus = document.getElementById('nfc-status');
-    if (nfcStatus) {
-        nfcStatus.innerHTML = '🔴 NFC Offline';
-        nfcStatus.style.background = 'rgba(255, 107, 107, 0.2)';
-        nfcStatus.style.color = '#ff6b6b';
-        nfcStatus.style.borderColor = '#ff6b6b';
-    }
-};
-
-nfcSocket.onclose = () => {
-    console.log("🔌 WebSocket deconectat");
-    const nfcStatus = document.getElementById('nfc-status');
-    if (nfcStatus) {
-        nfcStatus.innerHTML = '🟡 NFC Standby';
-        nfcStatus.style.background = 'rgba(255, 170, 0, 0.2)';
-        nfcStatus.style.color = '#ffaa00';
-        nfcStatus.style.borderColor = '#ffaa00';
-    }
-};
-
-nfcSocket.onmessage = (event) => {
+function handleNFCMessage(event) {
     let tagPrimit = event.data.trim().toLowerCase();
     console.log('Tag primit:', tagPrimit);
 
@@ -100,7 +149,10 @@ nfcSocket.onmessage = (event) => {
     saveClientsToStorage();
     saveCheckIns();
     initClientCards();
-};
+}
+
+// Pornește conexiunea
+connectNFC();
 
 // ════════════════════════════════════════════════════════════════════
 // ✅ VARIABILE GLOBALE
@@ -198,11 +250,17 @@ function resetDailyUsageIfNeeded() {
     const lastResetDate = localStorage.getItem('lastDailyReset');
     const todayDate = getTodayDate();
     if (lastResetDate !== todayDate) {
-        clients.forEach(client => client.usedToday = false);
+        clients.forEach(client => {
+            client.usedToday = false;
+            client.isInGym = false;
+            client.nfcScansToday = 0;
+            client.lastScanDate = null;
+        });
         clientCheckIns = {};
         saveClientsToStorage();
         saveCheckIns();
         localStorage.setItem('lastDailyReset', todayDate);
+        console.log('✅ Reset zilnic efectuat');
     }
 }
 
@@ -292,6 +350,7 @@ function login() {
         addToAuditLog('Login', `User: ${user} (${foundUser.role})`);
         showNotification(`Bine ai venit, ${foundUser.name}!`, 'success');
         initClientCards();
+        setTimeout(() => updateStatsCards(), 500);
     } else {
         errorDiv.innerHTML = '<p style="color: #ff6b6b;">User sau cod incorect!</p>';
         document.getElementById('loginCode').value = '';
@@ -435,7 +494,7 @@ function saveClient() {
 
     const today = new Date();
     const expirationDate = new Date(today);
-    expirationDate.setDate(expirationDate.getDate() + customDays);
+    expirationDate.setDate(expirationDate.getDate() + customDays - 1);
 
     const newClient = {
         id: Date.now(),
@@ -556,13 +615,24 @@ function openSettings() {
                 <button onclick="switchSettingsTab('users')" class="settings-tab" style="flex: 1; min-width: 100px; padding: 10px; background: transparent; border: 2px solid #ffaa33; border-radius: 8px; cursor: pointer; color: #ffaa33; font-weight: bold;">Utilizatori</button>
                 <button onclick="switchSettingsTab('clean')" class="settings-tab" style="flex: 1; min-width: 100px; padding: 10px; background: transparent; border: 2px solid #ffaa33; border-radius: 8px; cursor: pointer; color: #ffaa33; font-weight: bold;">Curatare</button>
             </div>
-            
+
             <div id="backup-tab" class="settings-content" style="display: block;">
-                <h3 style="color: #ffaa33; margin-bottom: 15px;">Backup & Restore</h3>
-                <button onclick="exportClientsJSON()" style="width: 100%; padding: 10px; background: #00ff88; color: black; border: none; border-radius: 8px; cursor: pointer; margin-bottom: 10px; font-weight: bold;">Exporta JSON</button>
-                <input type="file" id="importFile" accept=".json" style="width: 100%; padding: 8px; margin-bottom: 10px; border: 2px solid #6496ff; border-radius: 8px; background: rgba(100, 150, 255, 0.1); color: #e0e0e0;">
-                <button onclick="importClientsJSON()" style="width: 100%; padding: 10px; background: #6496ff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">Importa JSON</button>
+               <h3 style="color: #ffaa33; margin-bottom: 15px;">💾 Backup & Restore</h3>
+    
+               <div id="storageIndicator" style="margin-bottom: 15px;"></div>
+    
+               <button onclick="doManualBackup()" style="width:100%; padding:12px; background:#00ff88; color:black; border:none; border-radius:8px; cursor:pointer; margin-bottom:10px; font-weight:bold; font-size:14px;">💾 Backup Manual Acum</button>
+    
+               <div style="background: rgba(100,150,255,0.1); padding: 15px; border-radius: 12px; margin-bottom: 15px;">
+                  <h4 style="color: #6496ff; margin-bottom: 10px;">📥 Restaurare din backup</h4>
+                  <input type="file" id="restoreFile" accept=".json" style="width:100%; padding:8px; margin-bottom:10px; border:2px solid #6496ff; border-radius:8px; background:rgba(100,150,255,0.1); color:#e0e0e0;">
+                  <button onclick="restoreFromBackup(document.getElementById('restoreFile').files[0])" style="width:100%; padding:10px; background:#6496ff; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">📥 Restaurează</button>
             </div>
+    
+    <div style="background: rgba(255,170,0,0.1); padding: 12px; border-radius: 10px;">
+        <p style="color: #ffaa33; font-size: 12px; margin: 0;">⚠️ Backup-ul se face automat la prima deschidere a zilei. Fișierele se salvează în folderul Downloads.</p>
+    </div>
+</div>
             
             <div id="audit-tab" class="settings-content" style="display: none; max-height: 400px; overflow-y: auto;">
                 <h3 style="color: #ffaa33; margin-bottom: 15px;">Jurnal Audit</h3>
@@ -636,6 +706,7 @@ function switchSettingsTab(tab) {
     
     if (tab === 'users') renderUsersList();
     if (tab === 'audit') renderAuditLog();
+    if (tab === 'backup') showStorageIndicator();
 }
 
 function renderUsersList() {
@@ -1046,970 +1117,1035 @@ function openReports() {
     
     const reportsHTML = `
         <div class="box scroll-box" style="width: 950px; max-width: 95%;">
-            <h2 style="color: #ffaa33; margin-bottom: 25px;">📊 RAPOARTE AVANSATE</h2>
+            <h2 style="color: #ffaa33; margin-bottom: 20px;">📊 RAPOARTE</h2>
             
-            <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
-                <button onclick="switchReportsTab('subscriptions')" class="report-tab active" style="flex: 1; min-width: 110px; padding: 12px; background: #ff8c00; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: bold;">📈 Abonamente</button>
-                <button onclick="switchReportsTab('today')" class="report-tab" style="flex: 1; min-width: 110px; padding: 12px; background: transparent; border: 2px solid #ffaa33; border-radius: 10px; cursor: pointer; color: #ffaa33; font-weight: bold;">📅 Astăzi</button>
-                <button onclick="switchReportsTab('activity')" class="report-tab" style="flex: 1; min-width: 110px; padding: 12px; background: transparent; border: 2px solid #ffaa33; border-radius: 10px; cursor: pointer; color: #ffaa33; font-weight: bold;">🕒 Activitate</button>
-                <button onclick="switchReportsTab('subscriptionsCreated')" class="report-tab" style="flex: 1; min-width: 110px; padding: 12px; background: transparent; border: 2px solid #ffaa33; border-radius: 10px; cursor: pointer; color: #ffaa33; font-weight: bold;">📋 Abonamente Create</button>
-                <button onclick="switchReportsTab('customPeriod')" class="report-tab" style="flex: 1; min-width: 110px; padding: 12px; background: transparent; border: 2px solid #ffaa33; border-radius: 10px; cursor: pointer; color: #ffaa33; font-weight: bold;">📅 Perioadă Personalizată</button>
+            <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+                <button onclick="switchReportsTab('abonamente')" class="report-tab" id="tab-abonamente" style="flex:1; min-width:100px; padding:10px; background:#ff8c00; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">📦 Abonamente</button>
+                <button onclick="switchReportsTab('azi')" class="report-tab" id="tab-azi" style="flex:1; min-width:100px; padding:10px; background:transparent; border:2px solid #ffaa33; border-radius:8px; cursor:pointer; color:#ffaa33; font-weight:bold;">📅 Azi</button>
+                <button onclick="switchReportsTab('comparatii')" class="report-tab" id="tab-comparatii" style="flex:1; min-width:100px; padding:10px; background:transparent; border:2px solid #ffaa33; border-radius:8px; cursor:pointer; color:#ffaa33; font-weight:bold;">📈 Comparații</button>
+                <button onclick="switchReportsTab('tendinte')" class="report-tab" id="tab-tendinte" style="flex:1; min-width:100px; padding:10px; background:transparent; border:2px solid #ffaa33; border-radius:8px; cursor:pointer; color:#ffaa33; font-weight:bold;">📉 Tendințe</button>
+                <button onclick="switchReportsTab('perioada')" class="report-tab" id="tab-perioada" style="flex:1; min-width:100px; padding:10px; background:transparent; border:2px solid #ffaa33; border-radius:8px; cursor:pointer; color:#ffaa33; font-weight:bold;">🗓️ Perioadă</button>
+                <button onclick="switchReportsTab('activitate')" class="report-tab" id="tab-activitate" style="flex:1; min-width:100px; padding:10px; background:transparent; border:2px solid #ffaa33; border-radius:8px; cursor:pointer; color:#ffaa33; font-weight:bold;">👤 Activitate</button>
             </div>
             
-            <div id="subscriptions-report" class="report-content" style="display: block;">
-                <h3 style="color: #ffaa33; margin-bottom: 15px;">📊 Statistici Abonamente</h3>
-                <div id="activeSubscriptionsStats" style="background: rgba(100, 150, 255, 0.1); padding: 15px; border-radius: 12px; margin-bottom: 15px;"></div>
-                <div id="activeSubscriptionsList" style="max-height: 300px; overflow-y: auto;"></div>
-                <div id="subscriptionsDetailList" style="max-height: 300px; overflow-y: auto; margin-top: 15px;"></div>
-            </div>
+            <div id="report-content"></div>
             
-            <div id="today-report" class="report-content" style="display: none;">
-                <h3 style="color: #ffaa33; margin-bottom: 15px;">📅 Raport Zilnic - ${getTodayDate()}</h3>
-                <div id="todayStats" style="background: rgba(100, 150, 255, 0.1); padding: 15px; border-radius: 12px; margin-bottom: 15px;"></div>
-                <div id="todaySubscriptionsList" style="max-height: 300px; overflow-y: auto;"></div>
-            </div>
-            
-            <div id="activity-report" class="report-content" style="display: none; max-height: 350px; overflow-y: auto;">
-                <h3 style="color: #ffaa33; margin-bottom: 15px;">🕒 Acțiuni Recente</h3>
-                <div id="activityList"></div>
-            </div>
-            
-            <div id="subscriptionsCreated-report" class="report-content" style="display: none;">
-                <h3 style="color: #ffaa33; margin-bottom: 15px;">📋 Raport Abonamente Create</h3>
-                <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
-                    <select id="subsReportPeriod" onchange="filterSubscriptionsReport()" style="padding: 10px; border-radius: 8px; background: #1a1a2e; color: white;">
-                       <option value="today">📅 Astăzi</option>
-                       <option value="week">📅 Săptămâna curentă</option>
-                       <option value="month">📅 Luna curentă</option>
-                       <option value="lastMonth">📅 Luna trecută</option>
-                       <option value="all">📅 Toate</option>
-                    </select>
-                    <button onclick="exportSubscriptionsReport()" style="padding: 10px 20px; background: #00ff88; color: black;">📥 Exportă CSV</button>
-                </div>
-                <div id="subscriptionsCreatedList" style="max-height: 350px; overflow-y: auto;"></div>
-                <div id="subscriptionsCreatedTotal" style="background: rgba(255, 140, 0, 0.2); padding: 12px; border-radius: 10px; margin-top: 15px; text-align: center; font-weight: bold;"></div>
-            </div>
-            
-            <div id="customPeriod-report" class="report-content" style="display: none;">
-                <h3 style="color: #ffaa33; margin-bottom: 15px;">📅 Raport Perioadă Personalizată</h3>
-                <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
-                    <div>
-                        <label style="color: #888; font-size: 12px;">Data început:</label>
-                        <input type="date" id="customStartDate" style="padding: 10px; border-radius: 8px; background: #1a1a2e; color: white; border: 1px solid #ffaa33;">
-                    </div>
-                    <div>
-                        <label style="color: #888; font-size: 12px;">Data sfârșit:</label>
-                        <input type="date" id="customEndDate" style="padding: 10px; border-radius: 8px; background: #1a1a2e; color: white; border: 1px solid #ffaa33;">
-                    </div>
-                    <button onclick="generateCustomPeriodReport()" style="padding: 10px 20px; background: #ff8c00; color: white; border: none; border-radius: 8px; cursor: pointer;">Generează Raport</button>
-                    <button onclick="compareMonths()" style="padding: 10px 20px; background: #00ff88; color: black; border: none; border-radius: 8px; cursor: pointer;">Compară Luna curentă cu Luna trecută</button>
-                    <button onclick="compareYears()" style="padding: 10px 20px; background: #6496ff; color: white; border: none; border-radius: 8px; cursor: pointer;">Compară Anul curent cu Anul trecut</button>
-                </div>
-                <div id="customPeriodStats" style="background: rgba(100, 150, 255, 0.1); padding: 15px; border-radius: 12px; margin-bottom: 15px;"></div>
-                <div id="customPeriodList" style="max-height: 300px; overflow-y: auto;"></div>
-            </div>
-            
-            <div class="actions" style="margin-top: 20px;">
-                <button onclick="exportFullReport()" style="flex: 1; background: #00ff88; color: black; font-size: 14px; font-weight: bold;">📥 Exportă Raport Complet</button>
-                <button onclick="closeModal()" style="flex: 1; background: #6496ff; font-size: 14px; font-weight: bold;">❌ Închide</button>
+            <div style="margin-top:15px;">
+                <button onclick="closeModal()" style="width:100%; padding:10px; background:#6496ff; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">❌ Închide</button>
             </div>
         </div>
     `;
     
     openModal(reportsHTML);
-    renderActiveSubscriptionsReport();
-    renderTodayReport();
-    renderActivityReport();
-    renderSubscriptionsCreatedReport();
-    
-    // Setează datele implicite pentru perioada personalizată
-    const today = new Date();
-    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    document.getElementById('customStartDate').value = firstDayOfMonth.toISOString().split('T')[0];
-    document.getElementById('customEndDate').value = today.toISOString().split('T')[0];
+    switchReportsTab('abonamente');
 }
 
 function switchReportsTab(tab) {
-    document.querySelectorAll('.report-content').forEach(el => el.style.display = 'none');
     document.querySelectorAll('.report-tab').forEach(el => {
         el.style.background = 'transparent';
         el.style.color = '#ffaa33';
         el.style.border = '2px solid #ffaa33';
     });
-    
-    const tabElement = document.getElementById(`${tab}-report`);
-    if (tabElement) tabElement.style.display = 'block';
-    
-    if (event && event.target) {
-        event.target.style.background = '#ff8c00';
-        event.target.style.color = 'white';
-        event.target.style.border = 'none';
+    const activeBtn = document.getElementById(`tab-${tab}`);
+    if (activeBtn) {
+        activeBtn.style.background = '#ff8c00';
+        activeBtn.style.color = 'white';
+        activeBtn.style.border = 'none';
     }
     
-    if (tab === 'subscriptions') renderActiveSubscriptionsReport();
-    if (tab === 'today') renderTodayReport();
-    if (tab === 'activity') renderActivityReport();
-    if (tab === 'subscriptionsCreated') renderSubscriptionsCreatedReport();
-    if (tab === 'customPeriod') generateCustomPeriodReport();
+    const content = document.getElementById('report-content');
+    if (!content) return;
+    
+    switch(tab) {
+        case 'abonamente': content.innerHTML = renderTabAbonamente(); break;
+        case 'azi': content.innerHTML = renderTabAzi(); break;
+        case 'comparatii': content.innerHTML = renderTabComparatii(); break;
+        case 'tendinte': content.innerHTML = renderTabTendinte(); break;
+        case 'perioada': content.innerHTML = renderTabPerioada(); break;
+        case 'activitate': content.innerHTML = renderTabActivitate(); break;
+    }
 }
 
-function renderActiveSubscriptionsReport() {
-    const activeClients = clients.filter(c => {
-        const access = checkClientAccess(c);
-        return access.allowed && access.status !== 'expired';
-    });
-    const expiredClients = clients.filter(c => {
-        const access = checkClientAccess(c);
-        return !access.allowed || access.status === 'expired';
+function renderTabAbonamente() {
+    const activeClients = clients.filter(c => getClientDaysLeft(c) > 0 && c.isPaid);
+    const expiredClients = clients.filter(c => getClientDaysLeft(c) === 0 || !c.isPaid);
+    const thisMonth = new Date().toISOString().substring(0, 7);
+    const thisMonthPayments = getMonthPayments(thisMonth);
+    const createdThisMonth = thisMonthPayments.total;
+    
+    const subCounts = {};
+    clients.forEach(c => {
+        const name = SUBSCRIPTIONS[c.subscription]?.name || c.subscription || 'Necunoscut';
+        subCounts[name] = (subCounts[name] || 0) + 1;
     });
     
-    const statsHtml = `
-        <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-around;">
-            <div style="text-align: center; cursor: pointer;" onclick="toggleSubscriptionsList('active')">
-                <div style="font-size: 32px; font-weight: bold; color: #00ff88;">${activeClients.length}</div>
-                <div style="color: #00ff88;">✅ Abonamente Active</div>
-                <div style="font-size: 11px; color: #888;">Click pentru detalii</div>
+    const colors = ['#3266ad','#1d9e75','#ba7517','#993556','#888780'];
+    const subEntries = Object.entries(subCounts);
+    const last6 = getLast6Months();
+    const maxVal = Math.max(...last6.map(m => m.count), 1);
+    
+    return `
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:15px;">
+            <div onclick="toggleReportList('active')" style="cursor:pointer; text-align:center; background:rgba(0,255,136,0.1); border:2px solid rgba(0,255,136,0.3); border-radius:12px; padding:15px; transition:0.2s;" onmouseover="this.style.background='rgba(0,255,136,0.2)'" onmouseout="this.style.background='rgba(0,255,136,0.1)'">
+                <div style="font-size:32px; font-weight:bold; color:#00ff88;">${activeClients.length}</div>
+                <div style="font-size:12px; color:#00ff88;">✅ Active</div>
+                <div style="font-size:10px; color:#888; margin-top:4px;">Click pentru listă</div>
             </div>
-            <div style="text-align: center; cursor: pointer;" onclick="toggleSubscriptionsList('expired')">
-                <div style="font-size: 32px; font-weight: bold; color: #ff6b6b;">${expiredClients.length}</div>
-                <div style="color: #ff6b6b;">❌ Abonamente Expirate</div>
-                <div style="font-size: 11px; color: #888;">Click pentru detalii</div>
+            <div onclick="toggleReportList('expired')" style="cursor:pointer; text-align:center; background:rgba(255,107,107,0.1); border:2px solid rgba(255,107,107,0.3); border-radius:12px; padding:15px; transition:0.2s;" onmouseover="this.style.background='rgba(255,107,107,0.2)'" onmouseout="this.style.background='rgba(255,107,107,0.1)'">
+                <div style="font-size:32px; font-weight:bold; color:#ff6b6b;">${expiredClients.length}</div>
+                <div style="font-size:12px; color:#ff6b6b;">❌ Expirate</div>
+                <div style="font-size:10px; color:#888; margin-top:4px;">Click pentru listă</div>
             </div>
-            <div style="text-align: center;">
-                <div style="font-size: 32px; font-weight: bold; color: #ffaa33;">${clients.length}</div>
-                <div style="color: #ffaa33;">📊 Total Clienți</div>
+            <div style="text-align:center; background:rgba(100,150,255,0.1); border:1px solid rgba(100,150,255,0.3); border-radius:12px; padding:15px;">
+                <div style="font-size:32px; font-weight:bold; color:#6496ff;">${clients.length}</div>
+                <div style="font-size:12px; color:#6496ff;">👥 Total clienți</div>
+            </div>
+            <div style="text-align:center; background:rgba(255,170,0,0.1); border:1px solid rgba(255,170,0,0.3); border-radius:12px; padding:15px;">
+                <div style="font-size:32px; font-weight:bold; color:#ffaa00;">${createdThisMonth}</div>
+                <div style="font-size:12px; color:#ffaa00;">📅 Create luna asta</div>
+            </div>
+        </div>
+        
+        <div id="reportClientList" style="margin-bottom:15px;"></div>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px;">
+                <h4 style="color:#ffaa33; margin-bottom:12px;">Distribuție tipuri abonament</h4>
+                ${subEntries.map(([name, count], i) => `
+                    <div style="margin-bottom:8px;">
+                        <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px;">
+                            <span style="color:#e0e0e0;">${name}</span>
+                            <span style="color:${colors[i % colors.length]}; font-weight:bold;">${count}</span>
+                        </div>
+                        <div style="background:rgba(255,255,255,0.1); border-radius:4px; height:8px;">
+                            <div style="width:${Math.round(count/clients.length*100)}%; height:100%; background:${colors[i % colors.length]}; border-radius:4px;"></div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+            
+            <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px;">
+                <h4 style="color:#ffaa33; margin-bottom:12px;">Abonamente achitate — ultimele 6 luni</h4>
+                <div style="display:flex; align-items:flex-end; gap:6px; height:120px;">
+                    ${last6.map(m => {
+                        const hTotal = Math.round((m.count / maxVal) * 100);
+                        const hCreated = m.count > 0 ? Math.round((m.created / m.count) * hTotal) : 0;
+                        const hRenewed = hTotal - hCreated;
+                        return `
+                            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+                                <span style="font-size:10px; color:${m.isCurrentMonth ? '#00ff88' : '#ffaa33'};">${m.count}</span>
+                                <div style="width:100%; display:flex; flex-direction:column; height:${hTotal}px; border-radius:4px 4px 0 0; overflow:hidden; min-height:${m.count > 0 ? '4' : '1'}px;">
+                                    <div style="width:100%; height:${hRenewed}px; background:#ffaa00;"></div>
+                                    <div style="width:100%; height:${hCreated}px; background:#00ff88;"></div>
+                                </div>
+                                <span style="font-size:10px; color:#888;">${m.label}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                <div style="display:flex; gap:15px; margin-top:10px;">
+                    <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888;">
+                        <span style="width:10px;height:8px;background:#00ff88;border-radius:2px;display:inline-block;"></span>Create noi
+                    </span>
+                    <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888;">
+                        <span style="width:10px;height:8px;background:#ffaa00;border-radius:2px;display:inline-block;"></span>Reînnoite
+                    </span>
+                </div>
             </div>
         </div>
     `;
-    
-    document.getElementById('activeSubscriptionsStats').innerHTML = statsHtml;
-    document.getElementById('activeSubscriptionsList').innerHTML = '';
-    document.getElementById('subscriptionsDetailList').innerHTML = '';
 }
 
-function toggleSubscriptionsList(type) {
-    const container = document.getElementById('subscriptionsDetailList');
+function getLast6Months() {
+    const result = [];
+    const now = new Date();
+    const monthNames = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'];
+    
+    for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        const payments = getMonthPayments(key);
+        
+        result.push({
+            label: monthNames[d.getMonth()],
+            key,
+            count: payments.total,
+            created: payments.created,
+            renewed: payments.renewed,
+            isCurrentMonth: i === 0
+        });
+    }
+    return result;
+}
+
+function toggleReportList(type) {
+    const container = document.getElementById('reportClientList');
     if (!container) return;
     
-    let clientsList = [];
+    if (container.dataset.current === type) {
+        container.innerHTML = '';
+        container.dataset.current = '';
+        return;
+    }
     
+    container.dataset.current = type;
+    
+    let clientsList, title, color;
     if (type === 'active') {
-        clientsList = clients.filter(c => {
-            const access = checkClientAccess(c);
-            return access.allowed && access.status !== 'expired';
-        });
-        container.innerHTML = `<h4 style="color: #00ff88; margin-bottom: 10px;">✅ Abonamente Active (${clientsList.length})</h4>`;
+        clientsList = clients.filter(c => getClientDaysLeft(c) > 0 && c.isPaid)
+            .sort((a,b) => getClientDaysLeft(a) - getClientDaysLeft(b));
+        title = `✅ Abonamente Active (${clientsList.length})`;
+        color = '#00ff88';
     } else {
-        clientsList = clients.filter(c => {
-            const access = checkClientAccess(c);
-            return !access.allowed || access.status === 'expired';
-        });
-        container.innerHTML = `<h4 style="color: #ff6b6b; margin-bottom: 10px;">❌ Abonamente Expirate (${clientsList.length})</h4>`;
-    }
-    
-    if (clientsList.length === 0) {
-        container.innerHTML += '<p style="color: #888; text-align: center;">Niciun abonament în această categorie</p>';
-        return;
-    }
-    
-    container.innerHTML += `
-        <div style="max-height: 300px; overflow-y: auto;">
-            ${clientsList.map(client => {
-                const access = checkClientAccess(client);
-                const daysLeft = access.daysLeft || 0;
-                return `
-                    <div class="client-card" style="margin-bottom: 8px; cursor: pointer;" onclick="showClientDetails(${client.id})">
-                        <div style="min-width: 50px;">
-                            ${client.photo ? `<img src="${client.photo}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : '<div style="width: 50px; height: 50px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>'}
-                        </div>
-                        <div style="flex: 1;">
-                            <p style="font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
-                            <p style="font-size: 11px; margin: 2px 0;">📅 Expiră: ${new Date(client.expiration).toLocaleDateString('ro-RO')}</p>
-                            <p style="font-size: 10px; color: ${type === 'active' ? '#00ff88' : '#ff6b6b'};">${type === 'active' ? (daysLeft > 0 ? `${daysLeft} zile rămase` : 'Activ') : 'Expirat'}</p>
-                        </div>
-                    </div>
-                `;
-            }).join('')}
-        </div>
-    `;
-}
-
-function renderTodayReport() {
-    const todayStr = getTodayDate();
-    const todayCreated = clients.filter(c => c.createdAt && c.createdAt.startsWith(todayStr));
-    const todayActivity = auditLog.filter(log => log.timestamp.startsWith(todayStr));
-    const clientsInGymNow = clients.filter(c => c.isInGym === true && c.nfcScansToday === 1);
-    
-    const statsHtml = `
-        <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-around;">
-            <div style="text-align: center; cursor: pointer;" onclick="showTodayCreatedList()">
-                <div style="font-size: 32px; font-weight: bold; color: #00ff88;">${todayCreated.length}</div>
-                <div style="color: #00ff88;">📊 Abonamente create azi</div>
-                <div style="font-size: 11px; color: #888;">Click pentru detalii</div>
-            </div>
-            <div style="text-align: center; cursor: pointer;" onclick="showTodayActivityList()">
-                <div style="font-size: 32px; font-weight: bold; color: #ffaa33;">${todayActivity.length}</div>
-                <div style="color: #ffaa33;">🕒 Acțiuni azi</div>
-                <div style="font-size: 11px; color: #888;">Click pentru detalii</div>
-            </div>
-            <div style="text-align: center; cursor: pointer;" onclick="showClientsInGymList()">
-                <div style="font-size: 32px; font-weight: bold; color: #6496ff;">${clientsInGymNow.length}</div>
-                <div style="color: #6496ff;">🏋️ Clienți în sală acum</div>
-                <div style="font-size: 11px; color: #888;">Click pentru detalii</div>
-            </div>
-        </div>
-    `;
-    
-    document.getElementById('todayStats').innerHTML = statsHtml;
-    document.getElementById('todaySubscriptionsList').innerHTML = '';
-}
-
-function showTodayCreatedList() {
-    const todayStr = getTodayDate();
-    const todayCreated = clients.filter(c => c.createdAt && c.createdAt.startsWith(todayStr));
-    const container = document.getElementById('todaySubscriptionsList');
-    
-    if (todayCreated.length === 0) {
-        container.innerHTML = '<p style="color: #888; text-align: center;">Niciun abonament creat azi</p>';
-        return;
+        clientsList = clients.filter(c => getClientDaysLeft(c) === 0 || !c.isPaid)
+            .sort((a,b) => new Date(b.expiration) - new Date(a.expiration));
+        title = `❌ Abonamente Expirate (${clientsList.length})`;
+        color = '#ff6b6b';
     }
     
     container.innerHTML = `
-        <h4 style="color: #00ff88; margin-bottom: 10px;">📊 Abonamente create astăzi (${todayCreated.length})</h4>
-        <div style="max-height: 250px; overflow-y: auto;">
-            ${todayCreated.map(client => `
-                <div class="client-card" style="margin-bottom: 8px; cursor: pointer;" onclick="showClientDetails(${client.id})">
-                    <div style="min-width: 50px;">
-                        ${client.photo ? `<img src="${client.photo}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : '<div style="width: 50px; height: 50px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>'}
-                    </div>
-                    <div style="flex: 1;">
-                        <p style="font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
-                        <p style="font-size: 11px; margin: 2px 0;">📦 ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
-                        <p style="font-size: 10px; color: #6496ff;">👤 Creat de: ${client.createdBy || 'N/A'}</p>
-                    </div>
-                </div>
-            `).join('')}
+        <div style="background:rgba(30,41,59,0.8); border-radius:12px; padding:15px; border:1px solid ${color}40;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h4 style="color:${color}; margin:0;">${title}</h4>
+                <button onclick="document.getElementById('reportClientList').innerHTML=''; document.getElementById('reportClientList').dataset.current='';" 
+                    style="background:transparent; border:1px solid #666; color:#888; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px;">✕ Închide</button>
+            </div>
+            <div style="max-height:250px; overflow-y:auto;">
+                ${clientsList.map(client => {
+                    const daysLeft = getClientDaysLeft(client);
+                    const expDate = new Date(client.expiration + 'T12:00:00').toLocaleDateString('ro-RO');
+                    return `
+                        <div onclick="closeModal(); setTimeout(()=>showClientDetails(${client.id}), 100);" 
+                            style="display:flex; align-items:center; gap:12px; padding:10px; margin-bottom:6px; background:rgba(255,255,255,0.03); border-radius:10px; cursor:pointer; border:1px solid rgba(255,255,255,0.05); transition:0.2s;"
+                            onmouseover="this.style.background='rgba(255,255,255,0.08)'"
+                            onmouseout="this.style.background='rgba(255,255,255,0.03)'">
+                            <div style="min-width:45px;">
+                                ${client.photo ? `<img src="${client.photo}" style="width:45px;height:45px;border-radius:10px;object-fit:cover;border:2px solid ${color}40;">` : `<div style="width:45px;height:45px;background:#333;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;">👤</div>`}
+                            </div>
+                            <div style="flex:1;">
+                                <p style="font-weight:bold; margin:0; color:#fff; font-size:14px;">${client.prenume} ${client.nume}</p>
+                                <p style="font-size:11px; color:#888; margin:2px 0;">📦 ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
+                                <p style="font-size:11px; margin:2px 0; color:${color};">📅 ${expDate} ${type === 'active' ? `(${daysLeft} zile rămase)` : '(expirat)'}</p>
+                            </div>
+                            <span style="color:#888; font-size:18px;">›</span>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
         </div>
     `;
 }
 
-function showTodayActivityList() {
+// ════════ TAB 2 — AZI ════════
+function renderTabAzi() {
     const todayStr = getTodayDate();
-    const todayActivity = auditLog.filter(log => log.timestamp.startsWith(todayStr));
-    const container = document.getElementById('todaySubscriptionsList');
-    
-    if (todayActivity.length === 0) {
-        container.innerHTML = '<p style="color: #888; text-align: center;">Nicio acțiune înregistrată azi</p>';
-        return;
-    }
-    
-    container.innerHTML = `
-        <h4 style="color: #ffaa33; margin-bottom: 10px;">🕒 Acțiuni înregistrate astăzi (${todayActivity.length})</h4>
-        <div style="max-height: 250px; overflow-y: auto;">
-            ${todayActivity.map(log => `
-                <div style="padding: 10px; border-bottom: 1px solid #333; background: rgba(255, 170, 0, 0.05); border-radius: 8px; margin-bottom: 5px;">
-                    <div style="display: flex; justify-content: space-between;">
-                        <span style="color: #ffaa33;"><strong>${new Date(log.timestamp).toLocaleTimeString('ro-RO')}</strong></span>
-                        <span style="background: ${log.userRole === 'admin' ? '#ff8c00' : log.userRole === 'manager' ? '#6496ff' : '#00ff88'}; color: black; padding: 2px 8px; border-radius: 5px; font-size: 10px;">${log.userRole}</span>
-                    </div>
-                    <p style="margin: 5px 0; color: #00ff88;">👤 ${log.user}</p>
-                    <p style="margin: 0; color: #fff;">📌 ${log.action}</p>
-                    ${log.details ? `<p style="margin: 3px 0; color: #888; font-size: 11px;">📝 ${log.details}</p>` : ''}
-                </div>
-            `).join('')}
-        </div>
-    `;
-}
-
-function showClientsInGymList() {
-    const clientsInGymNow = clients.filter(c => c.isInGym === true && c.nfcScansToday === 1);
-    // Sortează după ora intrării (cele mai recente primele)
-    const sortedClients = [...clientsInGymNow].sort((a, b) => {
-        const timeA = clientCheckIns[a.id] ? new Date(clientCheckIns[a.id]).getTime() : 0;
-        const timeB = clientCheckIns[b.id] ? new Date(clientCheckIns[b.id]).getTime() : 0;
-        return timeB - timeA;
+    const todayEntries = auditLog.filter(l => l.timestamp.startsWith(todayStr) && l.action.includes('Intrare'));
+    const inGymNow = clients.filter(c => c.isInGym === true && c.nfcScansToday === 1);
+    const todayPayments = getMonthPayments(todayStr.substring(0,7));
+    const createdToday = todayPayments.clients.filter(c => {
+    const startDate = c.startDate || '';
+       return startDate.startsWith(todayStr);
     });
     
-    const container = document.getElementById('todaySubscriptionsList');
+    const hourCounts = {};
+    todayEntries.forEach(l => {
+        const hour = new Date(l.timestamp).getHours();
+        hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+    });
+    const maxHour = Math.max(...Object.values(hourCounts), 1);
     
-    if (sortedClients.length === 0) {
-        container.innerHTML = '<p style="color: #888; text-align: center;">Niciun client în sală acum</p>';
-        return;
-    }
-    
-    container.innerHTML = `
-        <h4 style="color: #6496ff; margin-bottom: 10px;">🏋️ Clienți în sală acum (${sortedClients.length})</h4>
-        <div style="max-height: 250px; overflow-y: auto;">
-            ${sortedClients.map(client => {
-                const checkInTime = clientCheckIns[client.id] ? new Date(clientCheckIns[client.id]).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }) : 'N/A';
-                return `
-                    <div class="client-card" style="margin-bottom: 8px; cursor: pointer;" onclick="showClientDetails(${client.id})">
-                        <div style="min-width: 50px;">
-                            ${client.photo ? `<img src="${client.photo}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : '<div style="width: 50px; height: 50px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>'}
+    return `
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:15px;">
+            <div style="text-align:center; background:rgba(0,255,136,0.1); border:1px solid rgba(0,255,136,0.3); border-radius:12px; padding:15px;">
+                <div style="font-size:32px; font-weight:bold; color:#00ff88;">${inGymNow.length}</div>
+                <div style="font-size:12px; color:#00ff88;">🏋️ În sală acum</div>
+            </div>
+            <div style="text-align:center; background:rgba(100,150,255,0.1); border:1px solid rgba(100,150,255,0.3); border-radius:12px; padding:15px;">
+                <div style="font-size:32px; font-weight:bold; color:#6496ff;">${todayEntries.length}</div>
+                <div style="font-size:12px; color:#6496ff;">⬆️ Intrări azi</div>
+            </div>
+            <div style="text-align:center; background:rgba(255,170,0,0.1); border:1px solid rgba(255,170,0,0.3); border-radius:12px; padding:15px;">
+                  <div style="font-size:32px; font-weight:bold; color:#ffaa00;">${createdToday.length}</div>
+                  <div style="font-size:12px; color:#ffaa00;">📋 Create/Reînn. azi</div>
+            </div>
+        </div>
+        
+        <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px; margin-bottom:15px;">
+            <h4 style="color:#ffaa33; margin-bottom:12px;">🕐 Ore de vârf azi</h4>
+            <div style="display:flex; align-items:flex-end; gap:4px; height:80px;">
+                ${Array.from({length:15}, (_,i) => i+7).map(hour => {
+                    const count = hourCounts[hour] || 0;
+                    const height = count > 0 ? Math.round((count/maxHour)*70) : 2;
+                    const isVarf = count === Math.max(...Object.values(hourCounts), 0) && count > 0;
+                    return `
+                        <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">
+                            ${count > 0 ? `<span style="font-size:9px; color:#ffaa33;">${count}</span>` : ''}
+                            <div style="width:100%; height:${height}px; background:${isVarf ? '#ffaa00' : '#3266ad'}; border-radius:2px 2px 0 0;"></div>
+                            <span style="font-size:9px; color:#666;">${hour}</span>
                         </div>
-                        <div style="flex: 1;">
-                            <p style="font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
-                            <p style="font-size: 11px; margin: 2px 0;">⏰ Intrat la: ${checkInTime}</p>
-                            <p style="font-size: 10px; color: #00ff88;">📅 Expiră: ${new Date(client.expiration).toLocaleDateString('ro-RO')}</p>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+        
+        <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px;">
+            <h4 style="color:#6496ff; margin-bottom:12px;">🏋️ Clienți în sală acum (${inGymNow.length})</h4>
+            ${inGymNow.length === 0 ? '<p style="color:#888; text-align:center;">Sala este goală</p>' : 
+                inGymNow.sort((a,b) => (b.lastScanTimestamp||0)-(a.lastScanTimestamp||0)).map(client => {
+                    const scanTime = client.lastScanTimestamp ? new Date(client.lastScanTimestamp).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}) : 'N/A';
+                    return `
+                        <div onclick="closeModal(); setTimeout(()=>showClientDetails(${client.id}),100);" style="display:flex; align-items:center; gap:10px; padding:8px; margin-bottom:6px; background:rgba(0,255,136,0.05); border-radius:8px; cursor:pointer; border:1px solid rgba(0,255,136,0.15);">
+                            ${client.photo ? `<img src="${client.photo}" style="width:40px;height:40px;border-radius:8px;object-fit:cover;">` : '<div style="width:40px;height:40px;background:#333;border-radius:8px;display:flex;align-items:center;justify-content:center;">👤</div>'}
+                            <div style="flex:1;">
+                                <p style="margin:0; font-weight:bold; font-size:13px;">${client.prenume} ${client.nume}</p>
+                                <p style="margin:0; font-size:11px; color:#00ff88;">⏰ Intrat la: ${scanTime}</p>
+                            </div>
+                            <span style="font-size:11px; color:#ffaa33;">${getClientDaysLeft(client)} zile</span>
                         </div>
-                    </div>
-                `;
-            }).join('')}
+                    `;
+                }).join('')
+            }
         </div>
     `;
 }
 
-function renderActivityReport() {
-    // Afișează doar acțiuni de tip modificare (editare, reînnoire, etc.)
-    const relevantActions = auditLog.filter(log => 
-        log.action.includes('Editeaza') || 
-        log.action.includes('Reînnoire') || 
-        log.action.includes('Adauga') ||
-        log.action.includes('Șterge') ||
-        log.action.includes('Modificare')
-    ).slice(-50).reverse();
+// ════════ TAB 3 — COMPARAȚII ════════
+function renderTabComparatii() {
+    const now = new Date();
+    const monthNames = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'];
     
-    const container = document.getElementById('activityList');
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    const lastMonthDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    const lastMonthKey = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth()+1).padStart(2,'0')}`;
+    const sameLastYearKey = `${now.getFullYear()-1}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    
+    const curr = getMonthPayments(currentMonthKey);
+    const last = getMonthPayments(lastMonthKey);
+    const sameLastYear = getMonthPayments(sameLastYearKey);
+    
+    const currYearTotal = Array.from({length:12}, (_,i) => {
+        const d = new Date(now.getFullYear(), i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        return getMonthPayments(key).total;
+    }).reduce((a,b) => a+b, 0);
+    
+    const lastYearTotal = Array.from({length:12}, (_,i) => {
+        const d = new Date(now.getFullYear()-1, i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        return getMonthPayments(key).total;
+    }).reduce((a,b) => a+b, 0);
+    
+    const pct = (a, b) => b === 0 ? '—' : `${a >= b ? '+' : ''}${Math.round((a-b)/b*100)}%`;
+    const colors = {'Adult Full':'#3266ad','Elev Full':'#993556','Adult Standard':'#ba7517','Elev Standard':'#1d9e75','2 Săptămâni':'#888780'};
+    
+    const last12 = Array.from({length:12}, (_,i) => {
+        const d = new Date(now.getFullYear(), now.getMonth()-11+i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        const keyLY = `${d.getFullYear()-1}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        const p = getMonthPayments(key);
+        const pLY = getMonthPayments(keyLY);
+        return { label: monthNames[d.getMonth()], curr: p.total, currCreated: p.created, currRenewed: p.renewed, prev: pLY.total, isCurrent: i === 11 };
+    });
+    const maxVal = Math.max(...last12.map(m => Math.max(m.curr, m.prev)), 1);
+    
+    const currByType = Object.entries(curr.byType);
+    const totalTypes = curr.total;
+    
+    return `
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:15px;">
+            <div onclick="toggleComparatiuList('current', '${currentMonthKey}')" style="cursor:pointer; text-align:center; background:rgba(0,255,136,0.1); border:2px solid rgba(0,255,136,0.3); border-radius:12px; padding:15px;" onmouseover="this.style.background='rgba(0,255,136,0.2)'" onmouseout="this.style.background='rgba(0,255,136,0.1)'">
+                <div style="font-size:11px; color:#888; margin-bottom:5px;">Luna curentă (${monthNames[now.getMonth()]})</div>
+                <div style="font-size:32px; font-weight:bold; color:#00ff88;">${curr.total}</div>
+                <div style="font-size:11px; color:#888; margin-top:5px;">🆕 ${curr.created} noi | 🔄 ${curr.renewed} reînn.</div>
+                <div style="font-size:10px; color:#888; margin-top:3px;">Click pentru listă</div>
+            </div>
+            <div onclick="toggleComparatiuList('last', '${lastMonthKey}')" style="cursor:pointer; text-align:center; background:rgba(100,150,255,0.1); border:1px solid rgba(100,150,255,0.3); border-radius:12px; padding:15px;" onmouseover="this.style.background='rgba(100,150,255,0.2)'" onmouseout="this.style.background='rgba(100,150,255,0.1)'">
+                <div style="font-size:11px; color:#888; margin-bottom:5px;">Luna trecută (${monthNames[lastMonthDate.getMonth()]})</div>
+                <div style="font-size:32px; font-weight:bold; color:#6496ff;">${last.total}</div>
+                <div style="font-size:11px; color:${curr.total >= last.total ? '#00ff88' : '#ff6b6b'}; margin-top:5px;">${pct(curr.total, last.total)} față de luna trecută</div>
+                <div style="font-size:10px; color:#888; margin-top:3px;">Click pentru listă</div>
+            </div>
+            <div onclick="toggleComparatiuList('lastyear', '${sameLastYearKey}')" style="cursor:pointer; text-align:center; background:rgba(255,170,0,0.1); border:1px solid rgba(255,170,0,0.3); border-radius:12px; padding:15px;" onmouseover="this.style.background='rgba(255,170,0,0.2)'" onmouseout="this.style.background='rgba(255,170,0,0.1)'">
+                <div style="font-size:11px; color:#888; margin-bottom:5px;">Aceeași lună an trecut</div>
+                <div style="font-size:32px; font-weight:bold; color:#ffaa00;">${sameLastYear.total}</div>
+                <div style="font-size:11px; color:${curr.total >= sameLastYear.total ? '#00ff88' : '#ff6b6b'}; margin-top:5px;">${pct(curr.total, sameLastYear.total)} față de an trecut</div>
+                <div style="font-size:10px; color:#888; margin-top:3px;">Click pentru listă</div>
+            </div>
+        </div>
+        
+        <div id="comparatiiClientList" style="margin-bottom:15px;"></div>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:15px;">
+            <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px;">
+                <h4 style="color:#ffaa33; margin-bottom:12px;">📊 Distribuție tipuri — luna curentă</h4>
+                ${currByType.length === 0 ? '<p style="color:#888;text-align:center;">Nicio tranzacție</p>' :
+                    currByType.sort((a,b) => b[1]-a[1]).map(([name, count]) => {
+                        const pctVal = Math.round(count/totalTypes*100);
+                        const color = colors[name] || '#888';
+                        return `
+                            <div style="margin-bottom:10px;">
+                                <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+                                    <span style="color:#e0e0e0;">${name}</span>
+                                    <span style="color:${color}; font-weight:bold;">${count} <span style="color:#888;">(${pctVal}%)</span></span>
+                                </div>
+                                <div style="background:rgba(255,255,255,0.1); border-radius:4px; height:10px;">
+                                    <div style="width:${pctVal}%; height:100%; background:${color}; border-radius:4px;"></div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')
+                }
+                <div style="margin-top:12px; padding:10px; background:rgba(255,255,255,0.03); border-radius:8px;">
+                    <div style="font-size:11px; color:#888; margin-bottom:6px;">Create vs Reînnoite</div>
+                    <div style="display:flex; height:14px; border-radius:6px; overflow:hidden;">
+                        <div style="flex:${curr.created||1}; background:#00ff88;"></div>
+                        <div style="flex:${curr.renewed||1}; background:#ffaa00;"></div>
+                    </div>
+                    <div style="display:flex; justify-content:space-around; font-size:11px; margin-top:6px;">
+                        <span style="color:#00ff88;">🆕 ${curr.created} noi (${curr.total > 0 ? Math.round(curr.created/curr.total*100) : 0}%)</span>
+                        <span style="color:#ffaa00;">🔄 ${curr.renewed} reînn. (${curr.total > 0 ? Math.round(curr.renewed/curr.total*100) : 0}%)</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px;">
+                <h4 style="color:#ffaa33; margin-bottom:12px;">📅 Total ani</h4>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                    <div style="text-align:center; background:rgba(0,255,136,0.1); border-radius:10px; padding:12px;">
+                        <div style="font-size:11px; color:#888;">Anul ${now.getFullYear()}</div>
+                        <div style="font-size:28px; font-weight:bold; color:#00ff88;">${currYearTotal}</div>
+                        <div style="font-size:10px; color:#888;">abonamente</div>
+                    </div>
+                    <div style="text-align:center; background:rgba(100,150,255,0.1); border-radius:10px; padding:12px;">
+                        <div style="font-size:11px; color:#888;">Anul ${now.getFullYear()-1}</div>
+                        <div style="font-size:28px; font-weight:bold; color:#6496ff;">${lastYearTotal}</div>
+                        <div style="font-size:11px; color:${currYearTotal >= lastYearTotal ? '#00ff88' : '#ff6b6b'};">${pct(currYearTotal, lastYearTotal)}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px;">
+            <h4 style="color:#ffaa33; margin-bottom:15px;">📊 Ultimele 12 luni vs același an trecut</h4>
+            <div style="display:flex; align-items:flex-end; gap:4px; height:120px;">
+                ${last12.map(m => {
+                    const hCurr = Math.round((m.curr/maxVal)*100);
+                    const hPrev = Math.round((m.prev/maxVal)*100);
+                    return `
+                        <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">
+                            <div style="width:100%; display:flex; gap:1px; align-items:flex-end; height:110px; justify-content:center;">
+                                <div style="flex:1; display:flex; flex-direction:column; height:${hCurr}px; border-radius:2px 2px 0 0; overflow:hidden; min-height:${m.curr>0?'3':'0'}px; ${m.isCurrent ? 'outline:1px solid #ffaa33;' : ''}">
+                                    <div style="flex:${m.currRenewed||1}; background:#ffaa00;"></div>
+                                    <div style="flex:${m.currCreated||1}; background:#1d9e75;"></div>
+                                </div>
+                                <div style="flex:1; height:${hPrev}px; background:#b4b2a9; border-radius:2px 2px 0 0; min-height:${m.prev>0?'3':'0'}px;"></div>
+                            </div>
+                            <span style="font-size:9px; color:${m.isCurrent ? '#ffaa33' : '#666'};">${m.label}</span>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+            <div style="display:flex; gap:15px; margin-top:10px; flex-wrap:wrap;">
+                <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888;"><span style="width:10px;height:8px;background:#1d9e75;border-radius:2px;display:inline-block;"></span>Create noi</span>
+                <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888;"><span style="width:10px;height:8px;background:#ffaa00;border-radius:2px;display:inline-block;"></span>Reînnoite</span>
+                <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888;"><span style="width:10px;height:8px;background:#b4b2a9;border-radius:2px;display:inline-block;"></span>Anul trecut</span>
+            </div>
+        </div>
+    `;
+}
+
+function toggleComparatiuList(type, monthKey) {
+    const container = document.getElementById('comparatiiClientList');
     if (!container) return;
     
-    if (relevantActions.length === 0) {
-        container.innerHTML = '<p style="color: #888; text-align: center;">Nu există modificări recente</p>';
+    if (container.dataset.current === type) {
+        container.innerHTML = '';
+        container.dataset.current = '';
         return;
     }
     
-    container.innerHTML = relevantActions.map(log => `
-        <div style="padding: 12px; border-bottom: 1px solid #333; background: rgba(100, 150, 255, 0.05); border-radius: 8px; margin-bottom: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
-                <span style="color: #ffaa33;"><strong>${new Date(log.timestamp).toLocaleString('ro-RO')}</strong></span>
-                <span style="background: ${log.userRole === 'admin' ? '#ff8c00' : log.userRole === 'manager' ? '#6496ff' : '#00ff88'}; color: black; padding: 2px 10px; border-radius: 5px; font-size: 11px; font-weight: bold;">${log.userRole}</span>
+    container.dataset.current = type;
+    const payments = getMonthPayments(monthKey);
+    const monthNames = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'];
+    const [year, month] = monthKey.split('-');
+    const monthLabel = `${monthNames[parseInt(month)-1]} ${year}`;
+    const colors = {'Adult Full':'#3266ad','Elev Full':'#993556','Adult Standard':'#ba7517','Elev Standard':'#1d9e75','2 Săptămâni':'#888780'};
+    
+    container.innerHTML = `
+        <div style="background:rgba(30,41,59,0.8); border-radius:12px; padding:15px; border:1px solid rgba(255,170,0,0.3);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h4 style="color:#ffaa33; margin:0;">📋 ${monthLabel} — Total: ${payments.total} abonamente</h4>
+                <button onclick="document.getElementById('comparatiiClientList').innerHTML=''; document.getElementById('comparatiiClientList').dataset.current='';"
+                    style="background:transparent; border:1px solid #666; color:#888; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px;">✕</button>
             </div>
-            <p style="margin: 8px 0 4px 0; color: #00ff88;"><strong>👤 ${log.user}</strong></p>
-            <p style="margin: 0; color: #fff; font-size: 13px;">📌 ${log.action}</p>
-            ${log.details ? `<p style="margin: 5px 0 0 0; color: #888; font-size: 12px; border-left: 2px solid #ffaa33; padding-left: 8px;">📝 ${log.details}</p>` : ''}
+            
+            <div style="display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
+                <span style="background:rgba(0,255,136,0.15); color:#00ff88; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:bold;">🆕 Create noi: ${payments.created}</span>
+                <span style="background:rgba(255,170,0,0.15); color:#ffaa00; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:bold;">🔄 Reînnoite: ${payments.renewed}</span>
+                ${Object.entries(payments.byType).sort((a,b)=>b[1]-a[1]).map(([name, count]) => `
+                    <span style="background:rgba(255,255,255,0.05); color:${colors[name]||'#888'}; padding:5px 14px; border-radius:20px; font-size:12px;">
+                        ${name}: ${count} (${Math.round(count/payments.total*100)}%)
+                    </span>
+                `).join('')}
+            </div>
+            
+            <div style="display:flex; gap:8px; margin-bottom:10px;">
+                <button onclick="filterComparatiuList('all')" id="filter-all" style="padding:5px 12px; background:#ff8c00; color:white; border:none; border-radius:6px; cursor:pointer; font-size:11px; font-weight:bold;">Toți (${payments.total})</button>
+                <button onclick="filterComparatiuList('new')" id="filter-new" style="padding:5px 12px; background:transparent; border:1px solid #00ff88; color:#00ff88; border-radius:6px; cursor:pointer; font-size:11px;">🆕 Noi (${payments.created})</button>
+                <button onclick="filterComparatiuList('renewed')" id="filter-renewed" style="padding:5px 12px; background:transparent; border:1px solid #ffaa00; color:#ffaa00; border-radius:6px; cursor:pointer; font-size:11px;">🔄 Reînn. (${payments.renewed})</button>
+            </div>
+            
+            <div id="comparatiiClientsList" style="max-height:280px; overflow-y:auto;">
+                ${renderComparatiuClients(payments.clients)}
+            </div>
         </div>
-    `).join('');
+    `;
+    
+    window._comparatiiPayments = payments;
 }
 
-function renderSubscriptionsCreatedReport() {
-    const period = document.getElementById('subsReportPeriod')?.value || 'today';
-    let filtered = [];
-    const today = new Date();
+function filterComparatiuList(filter) {
+    const payments = window._comparatiiPayments;
+    if (!payments) return;
     
-    let startDate, endDate;
+    let list;
+    if (filter === 'new') list = payments.clients.filter(c => c.createdAt && c.startDate && c.createdAt.substring(0,7) === c.startDate.substring(0,7));
+    else if (filter === 'renewed') list = payments.clients.filter(c => c.createdAt && c.startDate && c.createdAt.substring(0,7) !== c.startDate.substring(0,7));
+    else list = payments.clients;
     
-    switch(period) {
-        case 'today':
-            startDate = new Date(today);
-            startDate.setHours(0, 0, 0, 0);
-            endDate = new Date(today);
-            endDate.setHours(23, 59, 59, 999);
-            break;
-            
-        case 'week':
-            const dayOfWeek = today.getDay();
-            const startOfWeek = new Date(today);
-            startOfWeek.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
-            startOfWeek.setHours(0, 0, 0, 0);
-            const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 6);
-            endOfWeek.setHours(23, 59, 59, 999);
-            startDate = startOfWeek;
-            endDate = endOfWeek;
-            break;
-            
-        case 'month':
-            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-            startDate.setHours(0, 0, 0, 0);
-            endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-            endDate.setHours(23, 59, 59, 999);
-            break;
-            
-        case 'lastMonth':
-            startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-            startDate.setHours(0, 0, 0, 0);
-            endDate = new Date(today.getFullYear(), today.getMonth(), 0);
-            endDate.setHours(23, 59, 59, 999);
-            break;
-            
-        case 'all':
-        default:
-            startDate = null;
-            endDate = null;
-            break;
-    }
+    document.getElementById('comparatiiClientsList').innerHTML = renderComparatiuClients(list);
     
-    // FILTRARE - include createdAt (creare) și updatedAt (reînnoire)
-    if (startDate && endDate) {
-        filtered = clients.filter(c => {
-            let included = false;
-            let dateType = '';
-            
-            // Verifică createdAt (data creării)
-            if (c.createdAt) {
-                const createdDate = new Date(c.createdAt);
-                if (createdDate >= startDate && createdDate <= endDate) {
-                    included = true;
-                    dateType = 'CREAT';
-                }
-            }
-            
-            // Verifică updatedAt (data reînnoirii) - dacă nu a fost deja inclus
-            if (!included && c.updatedAt) {
-                const updatedDate = new Date(c.updatedAt);
-                if (updatedDate >= startDate && updatedDate <= endDate) {
-                    included = true;
-                    dateType = 'REÎNNOIT';
-                }
-            }
-            
-            // Verifică startDate (data începutului) - dacă nu a fost deja inclus
-            if (!included && c.startDate) {
-                const startDateObj = new Date(c.startDate);
-                if (startDateObj >= startDate && startDateObj <= endDate) {
-                    included = true;
-                    dateType = 'ÎNCEPUT';
-                }
-            }
-            
-            // Salvează tipul pentru afișare
-            if (included) {
-                c._reportType = dateType;
-            }
-            
-            return included;
-        });
-    } else {
-        filtered = [...clients];
-        filtered.forEach(c => c._reportType = 'TOTAL');
-    }
-    
-    // Grupează pe categorii de abonament
-    const summary = {};
-    const typeSummary = { CREAT: 0, REÎNNOIT: 0, ÎNCEPUT: 0, TOTAL: 0 };
-    
-    filtered.forEach(c => {
-        const subName = SUBSCRIPTIONS[c.subscription]?.name || c.subscription || 'Necunoscut';
-        summary[subName] = (summary[subName] || 0) + 1;
-        
-        if (c._reportType) {
-            typeSummary[c._reportType] = (typeSummary[c._reportType] || 0) + 1;
+    ['all','new','renewed'].forEach(f => {
+        const btn = document.getElementById(`filter-${f}`);
+        if (btn) {
+            btn.style.background = f === filter ? '#ff8c00' : 'transparent';
+            btn.style.color = f === filter ? 'white' : (f === 'new' ? '#00ff88' : f === 'renewed' ? '#ffaa00' : '#888');
+            btn.style.border = f === filter ? 'none' : `1px solid ${f === 'new' ? '#00ff88' : f === 'renewed' ? '#ffaa00' : '#666'}`;
         }
-        typeSummary.TOTAL++;
     });
+}
+
+function renderComparatiuClients(list) {
+    const colors = {'Adult Full':'#3266ad','Elev Full':'#993556','Adult Standard':'#ba7517','Elev Standard':'#1d9e75','2 Săptămâni':'#888780'};
+    if (list.length === 0) return '<p style="color:#888; text-align:center; padding:20px;">Niciun client în această categorie</p>';
     
-    // Afișează perioada în titlu
-    let periodLabel = '';
-    switch(period) {
-        case 'today':
-            periodLabel = `Astăzi (${startDate.toLocaleDateString('ro-RO')})`;
-            break;
-        case 'week':
-            periodLabel = `Săptămâna curentă (${startDate.toLocaleDateString('ro-RO')} - ${endDate.toLocaleDateString('ro-RO')})`;
-            break;
-        case 'month':
-            periodLabel = `Luna curentă (${startDate.toLocaleDateString('ro-RO')} - ${endDate.toLocaleDateString('ro-RO')})`;
-            break;
-        case 'lastMonth':
-            periodLabel = `Luna trecută (${startDate.toLocaleDateString('ro-RO')} - ${endDate.toLocaleDateString('ro-RO')})`;
-            break;
-        case 'all':
-            periodLabel = 'Toate abonamentele';
-            break;
-    }
-    
-    // Afișează rezumatul cu tipuri
-    let typeSummaryHtml = '';
-    if (period !== 'all') {
-        typeSummaryHtml = `
-            <div style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; margin-top: 8px;">
-                ${typeSummary.CREAT > 0 ? `<span style="background: rgba(0, 255, 136, 0.2); padding: 3px 12px; border-radius: 15px; color: #00ff88;">🆕 CREATE: ${typeSummary.CREAT}</span>` : ''}
-                ${typeSummary.REÎNNOIT > 0 ? `<span style="background: rgba(255, 170, 0, 0.2); padding: 3px 12px; border-radius: 15px; color: #ffaa33;">🔄 REÎNNOITE: ${typeSummary.REÎNNOIT}</span>` : ''}
-                ${typeSummary.ÎNCEPUT > 0 ? `<span style="background: rgba(100, 150, 255, 0.2); padding: 3px 12px; border-radius: 15px; color: #6496ff;">📅 ÎNCEPUT: ${typeSummary.ÎNCEPUT}</span>` : ''}
-            </div>
-        `;
-    }
-    
-    // Lista abonamentelor
-    const listHtml = filtered.map(client => {
-        const typeLabel = client._reportType === 'CREAT' ? '🆕 CREAT' : 
-                         client._reportType === 'REÎNNOIT' ? '🔄 REÎNNOIT' :
-                         client._reportType === 'ÎNCEPUT' ? '📅 ÎNCEPUT' : '';
-        const typeColor = client._reportType === 'CREAT' ? '#00ff88' : 
-                         client._reportType === 'REÎNNOIT' ? '#ffaa33' : '#6496ff';
-        
+    return list.map(c => {
+        const isNew = c.createdAt && c.startDate && c.createdAt.substring(0,7) === c.startDate.substring(0,7);
+        const subName = SUBSCRIPTIONS[c.subscription]?.name || c.subscription;
+        const subColor = colors[subName] || '#888';
         return `
-            <div class="client-card" style="margin-bottom: 8px; cursor: pointer;" onclick="showClientDetails(${client.id})">
-                <div style="min-width: 50px;">
-                    ${client.photo ? `<img src="${client.photo}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : '<div style="width: 50px; height: 50px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>'}
+            <div onclick="closeModal(); setTimeout(()=>showClientDetails(${c.id}),100);"
+                style="display:flex; align-items:center; gap:10px; padding:9px; margin-bottom:6px; background:rgba(255,255,255,0.03); border-radius:10px; cursor:pointer; border:1px solid rgba(255,255,255,0.05);"
+                onmouseover="this.style.background='rgba(255,255,255,0.08)'"
+                onmouseout="this.style.background='rgba(255,255,255,0.03)'">
+                <div style="min-width:40px;">
+                    ${c.photo ? `<img src="${c.photo}" style="width:40px;height:40px;border-radius:8px;object-fit:cover;">` : '<div style="width:40px;height:40px;background:#333;border-radius:8px;display:flex;align-items:center;justify-content:center;">👤</div>'}
                 </div>
-                <div style="flex: 1;">
-                    <p style="font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
-                    <p style="font-size: 11px; margin: 2px 0;">📦 ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription || 'N/A'}</p>
-                    <p style="font-size: 10px; color: ${typeColor};">
-                        ${typeLabel}
-                        ${client.createdAt ? ` | 📅 ${new Date(client.createdAt).toLocaleDateString('ro-RO')}` : ''}
-                        ${client.updatedAt && client.updatedAt !== client.createdAt ? ` | 🔄 ${new Date(client.updatedAt).toLocaleDateString('ro-RO')}` : ''}
-                    </p>
+                <div style="flex:1;">
+                    <p style="margin:0; font-weight:bold; font-size:13px; color:#fff;">${c.prenume} ${c.nume}</p>
+                    <p style="margin:2px 0; font-size:11px; color:${subColor};">📦 ${subName}</p>
+                    <p style="margin:0; font-size:10px; color:#888;">📅 ${c.startDate} → ${c.expiration}</p>
                 </div>
+                <span style="font-size:11px; padding:3px 8px; border-radius:10px; background:${isNew ? 'rgba(0,255,136,0.15)' : 'rgba(255,170,0,0.15)'}; color:${isNew ? '#00ff88' : '#ffaa00'};">${isNew ? '🆕 Nou' : '🔄 Reînn.'}</span>
             </div>
         `;
     }).join('');
+}
+
+window.toggleComparatiuList = toggleComparatiuList;
+window.filterComparatiuList = filterComparatiuList;
+
+// ════════ TAB 4 — TENDINȚE ════════
+function renderTabTendinte() {
+    const monthNames = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'];
+    const now = new Date();
     
-    // Rezumat pe categorii
-    const summaryHtml = Object.entries(summary).map(([name, count]) => 
-        `<span style="display: inline-block; background: rgba(255, 140, 0, 0.2); padding: 5px 12px; border-radius: 20px; margin: 5px;">${name}: ${count}</span>`
-    ).join('');
+    const last6 = Array.from({length:6}, (_,i) => {
+        const d = new Date(now.getFullYear(), now.getMonth()-5+i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        const p = getMonthPayments(key);
+        return { label: monthNames[d.getMonth()], key, count: p.total, created: p.created, renewed: p.renewed, isCurrentMonth: i === 5 };
+    });
+    const maxLast6 = Math.max(...last6.map(m => m.count), 1);
     
-    document.getElementById('subscriptionsCreatedList').innerHTML = listHtml || '<p style="color: #888; text-align: center;">Nu există abonamente în perioada selectată</p>';
-    document.getElementById('subscriptionsCreatedTotal').innerHTML = `
-        <strong>📊 Perioada: ${periodLabel}</strong><br>
-        <strong>Total abonamente: ${filtered.length}</strong>
-        ${typeSummaryHtml}
-        <br>
-        ${summaryHtml || 'Nicio categorie'}
+    const dowCounts = [0,0,0,0,0,0,0];
+    auditLog.filter(l => l.action.includes('Intrare')).forEach(l => {
+        dowCounts[new Date(l.timestamp).getDay()]++;
+    });
+    const maxDow = Math.max(...dowCounts, 1);
+    const dowNames = ['Du','Lu','Ma','Mi','Jo','Vi','Sâ'];
+    
+    const hourCounts = new Array(24).fill(0);
+    auditLog.filter(l => l.action.includes('Intrare')).forEach(l => {
+        hourCounts[new Date(l.timestamp).getHours()]++;
+    });
+    const hoursToShow = hourCounts.slice(7, 22);
+    const maxHourAll = Math.max(...hoursToShow, 1);
+    
+    return `
+        <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px; margin-bottom:15px;">
+            <h4 style="color:#ffaa33; margin-bottom:12px;">📈 Abonamente achitate — ultimele 6 luni</h4>
+            <div style="display:flex; align-items:flex-end; gap:8px; height:120px;">
+                ${last6.map(m => {
+                    const hTotal = Math.round((m.count/maxLast6)*100);
+                    const hRenewed = m.count > 0 ? Math.round((m.renewed/m.count)*hTotal) : 0;
+                    const hCreated = hTotal - hRenewed;
+                    return `
+                        <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer;" onclick="showMonthDetail('${m.key}')">
+                            <span style="font-size:11px; color:${m.isCurrentMonth ? '#ffaa33' : '#888'}; font-weight:${m.isCurrentMonth ? 'bold' : 'normal'};">${m.count}</span>
+                            <div style="width:100%; display:flex; flex-direction:column; height:${hTotal}px; border-radius:4px 4px 0 0; overflow:hidden; min-height:${m.count>0?'4':'1'}px; ${m.isCurrentMonth ? 'outline:2px solid #ffaa33;' : ''}">
+                                <div style="height:${hRenewed}px; background:#ffaa00;"></div>
+                                <div style="height:${hCreated}px; background:#1d9e75;"></div>
+                            </div>
+                            <span style="font-size:10px; color:${m.isCurrentMonth ? '#ffaa33' : '#666'};">${m.label}</span>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+            <div style="display:flex; gap:15px; margin-top:10px; flex-wrap:wrap;">
+                <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888;"><span style="width:10px;height:8px;background:#1d9e75;border-radius:2px;display:inline-block;"></span>Create noi</span>
+                <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:#888;"><span style="width:10px;height:8px;background:#ffaa00;border-radius:2px;display:inline-block;"></span>Reînnoite</span>
+                <span style="font-size:11px; color:#888;">Click pe bară pentru detalii</span>
+            </div>
+        </div>
+        
+        <div id="tendintaMonthDetail" style="margin-bottom:15px;"></div>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px;">
+                <h4 style="color:#ffaa33; margin-bottom:12px;">🕐 Ore de vârf (toate timpurile)</h4>
+                <div style="display:flex; align-items:flex-end; gap:3px; height:80px;">
+                    ${hoursToShow.map((count, i) => {
+                        const h = count > 0 ? Math.round((count/maxHourAll)*70) : 2;
+                        const isVarf = count === Math.max(...hoursToShow) && count > 0;
+                        return `
+                            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">
+                                <div style="width:100%; height:${h}px; background:${isVarf ? '#ffaa00' : '#3266ad'}; border-radius:2px 2px 0 0;"></div>
+                                <span style="font-size:8px; color:#666;">${i+7}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+            
+            <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px;">
+                <h4 style="color:#ffaa33; margin-bottom:12px;">📅 Zile active din săptămână</h4>
+                <div style="display:flex; align-items:flex-end; gap:5px; height:80px;">
+                    ${[1,2,3,4,5,6,0].map(dow => {
+                        const count = dowCounts[dow];
+                        const h = count > 0 ? Math.round((count/maxDow)*70) : 2;
+                        return `
+                            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">
+                                <div style="width:100%; height:${h}px; background:#3266ad; border-radius:2px 2px 0 0;"></div>
+                                <span style="font-size:10px; color:#888;">${dowNames[dow]}</span>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        </div>
     `;
 }
 
-function generateCustomPeriodReport() {
-    const startDateStr = document.getElementById('customStartDate')?.value;
-    const endDateStr = document.getElementById('customEndDate')?.value;
+function showMonthDetail(monthKey) {
+    const payments = getMonthPayments(monthKey);
+    const monthNames = ['Ian','Feb','Mar','Apr','Mai','Iun','Iul','Aug','Sep','Oct','Nov','Dec'];
+    const [year, month] = monthKey.split('-');
+    const monthLabel = `${monthNames[parseInt(month)-1]} ${year}`;
+    const colors = {'Adult Full':'#3266ad','Elev Full':'#993556','Adult Standard':'#ba7517','Elev Standard':'#1d9e75','2 Săptămâni':'#888780'};
+    const container = document.getElementById('tendintaMonthDetail');
+    if (!container) return;
     
-    if (!startDateStr || !endDateStr) {
-        showNotification('Selectează perioada!', 'error');
+    if (container.dataset.month === monthKey) {
+        container.innerHTML = '';
+        container.dataset.month = '';
         return;
     }
+    container.dataset.month = monthKey;
     
-    const startDate = new Date(startDateStr);
-    startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(endDateStr);
-    endDate.setHours(23, 59, 59, 999);
-    
-    // Funcție pentru a verifica dacă un client este în perioada selectată
-    function isClientInPeriod(client, start, end) {
-        // Verifică createdAt (creare)
-        if (client.createdAt) {
-            const d = new Date(client.createdAt);
-            if (d >= start && d <= end) return true;
-        }
-        // Verifică updatedAt (reînnoire)
-        if (client.updatedAt) {
-            const d = new Date(client.updatedAt);
-            if (d >= start && d <= end) return true;
-        }
-        // Verifică startDate (început abonament)
-        if (client.startDate) {
-            const d = new Date(client.startDate);
-            if (d >= start && d <= end) return true;
-        }
-        return false;
-    }
-    
-    const filteredClients = clients.filter(c => isClientInPeriod(c, startDate, endDate));
-    
-    // Adaugă tipuri pentru afișare
-    filteredClients.forEach(c => {
-        if (c.updatedAt && new Date(c.updatedAt) >= startDate && new Date(c.updatedAt) <= endDate) {
-            c._reportType = 'REÎNNOIT';
-        } else if (c.createdAt && new Date(c.createdAt) >= startDate && new Date(c.createdAt) <= endDate) {
-            c._reportType = 'CREAT';
-        } else if (c.startDate && new Date(c.startDate) >= startDate && new Date(c.startDate) <= endDate) {
-            c._reportType = 'ÎNCEPUT';
-        }
-    });
-    
-    const filteredAudit = auditLog.filter(log => {
-        const logDate = new Date(log.timestamp);
-        return logDate >= startDate && logDate <= endDate;
-    });
-    
-    const totalSubscriptions = filteredClients.length;
-    const totalActions = filteredAudit.length;
-    const subscriptionsByType = {};
-    const typeSummary = { CREAT: 0, REÎNNOIT: 0, ÎNCEPUT: 0 };
-    
-    filteredClients.forEach(c => {
-        const subName = SUBSCRIPTIONS[c.subscription]?.name || c.subscription || 'Necunoscut';
-        subscriptionsByType[subName] = (subscriptionsByType[subName] || 0) + 1;
-        
-        if (c._reportType) {
-            typeSummary[c._reportType] = (typeSummary[c._reportType] || 0) + 1;
-        }
-    });
-    
-    // Afișează tipurile
-    let typeSummaryHtml = '';
-    if (typeSummary.CREAT > 0 || typeSummary.REÎNNOIT > 0) {
-        typeSummaryHtml = `
-            <div style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; margin-top: 8px;">
-                ${typeSummary.CREAT > 0 ? `<span style="background: rgba(0, 255, 136, 0.2); padding: 3px 12px; border-radius: 15px; color: #00ff88;">🆕 CREATE: ${typeSummary.CREAT}</span>` : ''}
-                ${typeSummary.REÎNNOIT > 0 ? `<span style="background: rgba(255, 170, 0, 0.2); padding: 3px 12px; border-radius: 15px; color: #ffaa33;">🔄 REÎNNOITE: ${typeSummary.REÎNNOIT}</span>` : ''}
-                ${typeSummary.ÎNCEPUT > 0 ? `<span style="background: rgba(100, 150, 255, 0.2); padding: 3px 12px; border-radius: 15px; color: #6496ff;">📅 ÎNCEPUT: ${typeSummary.ÎNCEPUT}</span>` : ''}
+    container.innerHTML = `
+        <div style="background:rgba(30,41,59,0.8); border-radius:12px; padding:15px; border:1px solid rgba(255,170,0,0.3);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h4 style="color:#ffaa33; margin:0;">📋 ${monthLabel} — Total: ${payments.total}</h4>
+                <button onclick="document.getElementById('tendintaMonthDetail').innerHTML=''; document.getElementById('tendintaMonthDetail').dataset.month='';" style="background:transparent; border:1px solid #666; color:#888; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px;">✕</button>
             </div>
-        `;
-    }
-    
-    const statsHtml = `
-        <div style="display: flex; gap: 15px; flex-wrap: wrap; justify-content: space-around; margin-bottom: 20px;">
-            <div style="text-align: center; background: rgba(0, 255, 136, 0.1); padding: 15px; border-radius: 12px; min-width: 120px;">
-                <div style="font-size: 28px; font-weight: bold; color: #00ff88;">${totalSubscriptions}</div>
-                <div style="color: #00ff88;">📊 Abonamente (create + reînnoite)</div>
-                ${typeSummaryHtml}
-            </div>
-            <div style="text-align: center; background: rgba(255, 170, 0, 0.1); padding: 15px; border-radius: 12px; min-width: 120px;">
-                <div style="font-size: 28px; font-weight: bold; color: #ffaa33;">${totalActions}</div>
-                <div style="color: #ffaa33;">🕒 Acțiuni înregistrate</div>
-            </div>
-        </div>
-        <div style="background: rgba(100, 150, 255, 0.1); padding: 15px; border-radius: 12px;">
-            <h4 style="color: #6496ff; margin-bottom: 10px;">📈 Abonamente pe tip</h4>
-            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                ${Object.entries(subscriptionsByType).map(([name, count]) => `
-                    <span style="background: rgba(100, 150, 255, 0.3); padding: 5px 12px; border-radius: 20px;">${name}: ${count}</span>
+            <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+                <span style="background:rgba(0,255,136,0.15); color:#00ff88; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:bold;">🆕 Noi: ${payments.created}</span>
+                <span style="background:rgba(255,170,0,0.15); color:#ffaa00; padding:5px 14px; border-radius:20px; font-size:12px; font-weight:bold;">🔄 Reînn.: ${payments.renewed}</span>
+                ${Object.entries(payments.byType).sort((a,b)=>b[1]-a[1]).map(([name, count]) => `
+                    <span style="background:rgba(255,255,255,0.05); color:${colors[name]||'#888'}; padding:5px 12px; border-radius:20px; font-size:11px;">${name}: ${count}</span>
                 `).join('')}
-                ${Object.keys(subscriptionsByType).length === 0 ? '<p style="color: #888;">Niciun abonament în perioada selectată</p>' : ''}
+            </div>
+            <div style="max-height:220px; overflow-y:auto;">
+                ${renderComparatiuClients(payments.clients)}
             </div>
         </div>
     `;
-    
-    const listHtml = `
-        <h4 style="color: #ffaa33; margin-top: 15px;">📋 Lista abonamentelor (create + reînnoite)</h4>
-        <div style="max-height: 250px; overflow-y: auto;">
-            ${filteredClients.map(client => `
-                <div class="client-card" style="margin-bottom: 8px; cursor: pointer; border-left: 4px solid ${client._reportType === 'CREAT' ? '#00ff88' : '#ffaa33'};" onclick="showClientDetails(${client.id})">
-                    <div style="min-width: 50px;">
-                        ${client.photo ? `<img src="${client.photo}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : '<div style="width: 50px; height: 50px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>'}
-                    </div>
-                    <div style="flex: 1;">
-                        <p style="font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
-                        <p style="font-size: 11px; margin: 2px 0;">📦 ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
-                        <p style="font-size: 10px; color: ${client._reportType === 'CREAT' ? '#00ff88' : '#ffaa33'};">
-                            ${client._reportType === 'CREAT' ? '🆕 CREAT' : client._reportType === 'REÎNNOIT' ? '🔄 REÎNNOIT' : '📅 ÎNCEPUT'} 
-                            ${client.createdAt ? `| 📅 ${new Date(client.createdAt).toLocaleDateString('ro-RO')}` : ''}
-                            ${client.updatedAt && client.updatedAt !== client.createdAt ? `| 🔄 ${new Date(client.updatedAt).toLocaleDateString('ro-RO')}` : ''}
-                        </p>
-                    </div>
-                </div>
-            `).join('')}
-            ${filteredClients.length === 0 ? '<p style="color: #888; text-align: center;">Nu există abonamente în perioada selectată</p>' : ''}
-        </div>
-    `;
-    
-    document.getElementById('customPeriodStats').innerHTML = statsHtml;
-    document.getElementById('customPeriodList').innerHTML = listHtml;
 }
 
-function compareMonths() {
-    const today = new Date();
-    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const currentMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    currentMonthEnd.setHours(23, 59, 59, 999);
+window.showMonthDetail = showMonthDetail;
+window.toggleComparatiuList = toggleComparatiuList;
+window.filterComparatiuList = filterComparatiuList;
+
+// ════════ TAB 5 — PERIOADĂ PERSONALIZATĂ ════════
+function renderTabPerioada() {
+    const today = getTodayDate();
+    const firstOfMonth = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`;
     
-    const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
-    lastMonthEnd.setHours(23, 59, 59, 999);
+    return `
+        <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px; margin-bottom:15px;">
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:15px;">
+                <div>
+                    <label style="font-size:11px; color:#888; display:block; margin-bottom:4px;">De la:</label>
+                    <input type="date" id="periodStart" value="${firstOfMonth}" style="padding:8px; border-radius:8px; border:1px solid #ffaa33; background:rgba(255,170,0,0.1); color:#e0e0e0;">
+                </div>
+                <div>
+                    <label style="font-size:11px; color:#888; display:block; margin-bottom:4px;">Până la:</label>
+                    <input type="date" id="periodEnd" value="${today}" style="padding:8px; border-radius:8px; border:1px solid #ffaa33; background:rgba(255,170,0,0.1); color:#e0e0e0;">
+                </div>
+                <button onclick="generatePeriodReport()" style="padding:8px 16px; background:#ff8c00; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">🔍 Generează</button>
+                <button onclick="exportPeriodCSV()" style="padding:8px 16px; background:#00ff88; color:black; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">📥 CSV</button>
+            </div>
+            <div id="periodResults">
+                <p style="color:#888; text-align:center;">Selectează perioada și apasă Generează</p>
+            </div>
+        </div>
+    `;
+}
+
+function generatePeriodReport() {
+    const startStr = document.getElementById('periodStart')?.value;
+    const endStr = document.getElementById('periodEnd')?.value;
+    if (!startStr || !endStr) return;
     
-    // Funcție pentru a verifica dacă un client este în perioada selectată
-    function isClientInPeriod(client, start, end) {
-        // Verifică createdAt (creare)
-        if (client.createdAt) {
-            const d = new Date(client.createdAt);
-            if (d >= start && d <= end) return true;
-        }
-        // Verifică updatedAt (reînnoire)
-        if (client.updatedAt) {
-            const d = new Date(client.updatedAt);
-            if (d >= start && d <= end) return true;
-        }
-        // Verifică startDate (început abonament)
-        if (client.startDate) {
-            const d = new Date(client.startDate);
-            if (d >= start && d <= end) return true;
-        }
+    const start = new Date(startStr + 'T00:00:00');
+    const end = new Date(endStr + 'T23:59:59');
+    
+    const allInPeriod = clients.filter(c => {
+        const startDate = c.startDate ? new Date(c.startDate + 'T12:00:00') : null;
+        const createdDate = c.createdAt ? new Date(c.createdAt) : null;
+        const updatedDate = c.updatedAt ? new Date(c.updatedAt) : null;
+        
+        if (startDate && startDate >= start && startDate <= end) return true;
+        if (createdDate && createdDate >= start && createdDate <= end) return true;
+        if (updatedDate && updatedDate >= start && updatedDate <= end) return true;
         return false;
+    });
+    
+    const createdNew = allInPeriod.filter(c => 
+        c.createdAt && new Date(c.createdAt) >= start && new Date(c.createdAt) <= end &&
+        c.startDate && new Date(c.startDate + 'T12:00:00') >= start
+    );
+    
+    const renewed = allInPeriod.filter(c => 
+        !createdNew.includes(c)
+    );
+    
+    const byType = {};
+    allInPeriod.forEach(c => {
+        const name = SUBSCRIPTIONS[c.subscription]?.name || c.subscription || 'Necunoscut';
+        byType[name] = (byType[name] || 0) + 1;
+    });
+    
+    const entries = auditLog.filter(l => l.action.includes('Intrare') && new Date(l.timestamp) >= start && new Date(l.timestamp) <= end);
+    const colors = {'Adult Full':'#3266ad','Elev Full':'#993556','Adult Standard':'#ba7517','Elev Standard':'#1d9e75','2 Săptămâni':'#888780'};
+    
+    const days = Math.ceil((end-start)/(1000*60*60*24));
+    const dailyCounts = {};
+    entries.forEach(l => {
+        const d = l.timestamp.split('T')[0];
+        dailyCounts[d] = (dailyCounts[d] || 0) + 1;
+    });
+    const maxDay = Math.max(...Object.values(dailyCounts), 1);
+    const dayLabels = [];
+    for (let i = 0; i < Math.min(days, 31); i++) {
+        const d = new Date(start);
+        d.setDate(d.getDate() + i);
+        dayLabels.push(d.toISOString().split('T')[0]);
     }
     
-    const currentMonthClients = clients.filter(c => isClientInPeriod(c, currentMonthStart, currentMonthEnd));
-    const lastMonthClients = clients.filter(c => isClientInPeriod(c, lastMonthStart, lastMonthEnd));
+    window._periodAll = allInPeriod;
+    window._periodNew = createdNew;
+    window._periodRenewed = renewed;
     
-    const currentMonthActions = auditLog.filter(log => {
-        const logDate = new Date(log.timestamp);
-        return logDate >= currentMonthStart && logDate <= currentMonthEnd;
-    });
-    
-    const lastMonthActions = auditLog.filter(log => {
-        const logDate = new Date(log.timestamp);
-        return logDate >= lastMonthStart && logDate <= lastMonthEnd;
-    });
-    
-    // Adaugă tipuri pentru afișare
-    currentMonthClients.forEach(c => {
-        c._comparisonType = 'Luna curentă';
-        if (c.updatedAt && new Date(c.updatedAt) >= currentMonthStart && new Date(c.updatedAt) <= currentMonthEnd) {
-            c._reportType = 'REÎNNOIT';
-        } else if (c.createdAt && new Date(c.createdAt) >= currentMonthStart && new Date(c.createdAt) <= currentMonthEnd) {
-            c._reportType = 'CREAT';
-        } else if (c.startDate && new Date(c.startDate) >= currentMonthStart && new Date(c.startDate) <= currentMonthEnd) {
-            c._reportType = 'ÎNCEPUT';
-        }
-    });
-    
-    lastMonthClients.forEach(c => {
-        c._comparisonType = 'Luna trecută';
-        if (c.updatedAt && new Date(c.updatedAt) >= lastMonthStart && new Date(c.updatedAt) <= lastMonthEnd) {
-            c._reportType = 'REÎNNOIT';
-        } else if (c.createdAt && new Date(c.createdAt) >= lastMonthStart && new Date(c.createdAt) <= lastMonthEnd) {
-            c._reportType = 'CREAT';
-        } else if (c.startDate && new Date(c.startDate) >= lastMonthStart && new Date(c.startDate) <= lastMonthEnd) {
-            c._reportType = 'ÎNCEPUT';
-        }
-    });
-    
-    const statsHtml = `
-        <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-between;">
-            <div style="flex: 1; background: rgba(0, 255, 136, 0.1); padding: 15px; border-radius: 12px; text-align: center;">
-                <h4 style="color: #00ff88;">📅 ${currentMonthStart.toLocaleDateString('ro-RO')} - ${currentMonthEnd.toLocaleDateString('ro-RO')}</h4>
-                <div style="font-size: 28px; font-weight: bold;">${currentMonthClients.length}</div>
-                <div>Abonamente (create + reînnoite)</div>
-                <div style="font-size: 14px; margin-top: 8px;">
-                    ${currentMonthClients.filter(c => c._reportType === 'CREAT').length > 0 ? `🆕 Create: ${currentMonthClients.filter(c => c._reportType === 'CREAT').length}` : ''}
-                    ${currentMonthClients.filter(c => c._reportType === 'REÎNNOIT').length > 0 ? ` | 🔄 Reînnoite: ${currentMonthClients.filter(c => c._reportType === 'REÎNNOIT').length}` : ''}
-                </div>
-                <div style="font-size: 20px; margin-top: 10px;">${currentMonthActions.length}</div>
-                <div>Acțiuni înregistrate</div>
+    document.getElementById('periodResults').innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:15px;">
+            <div onclick="filterPeriodList('all')" style="cursor:pointer; text-align:center; background:rgba(255,170,0,0.1); border:2px solid rgba(255,170,0,0.3); border-radius:10px; padding:12px;" onmouseover="this.style.background='rgba(255,170,0,0.2)'" onmouseout="this.style.background='rgba(255,170,0,0.1)'">
+                <div style="font-size:28px; font-weight:bold; color:#ffaa00;">${allInPeriod.length}</div>
+                <div style="font-size:11px; color:#ffaa00;">Total abonamente</div>
+                <div style="font-size:10px; color:#888;">Click pentru listă</div>
             </div>
-            <div style="flex: 1; background: rgba(100, 150, 255, 0.1); padding: 15px; border-radius: 12px; text-align: center;">
-                <h4 style="color: #6496ff;">📅 ${lastMonthStart.toLocaleDateString('ro-RO')} - ${lastMonthEnd.toLocaleDateString('ro-RO')}</h4>
-                <div style="font-size: 28px; font-weight: bold;">${lastMonthClients.length}</div>
-                <div>Abonamente (create + reînnoite)</div>
-                <div style="font-size: 14px; margin-top: 8px;">
-                    ${lastMonthClients.filter(c => c._reportType === 'CREAT').length > 0 ? `🆕 Create: ${lastMonthClients.filter(c => c._reportType === 'CREAT').length}` : ''}
-                    ${lastMonthClients.filter(c => c._reportType === 'REÎNNOIT').length > 0 ? ` | 🔄 Reînnoite: ${lastMonthClients.filter(c => c._reportType === 'REÎNNOIT').length}` : ''}
-                </div>
-                <div style="font-size: 20px; margin-top: 10px;">${lastMonthActions.length}</div>
-                <div>Acțiuni înregistrate</div>
+            <div onclick="filterPeriodList('new')" style="cursor:pointer; text-align:center; background:rgba(0,255,136,0.1); border-radius:10px; padding:12px;" onmouseover="this.style.background='rgba(0,255,136,0.2)'" onmouseout="this.style.background='rgba(0,255,136,0.1)'">
+                <div style="font-size:28px; font-weight:bold; color:#00ff88;">${createdNew.length}</div>
+                <div style="font-size:11px; color:#00ff88;">🆕 Create noi</div>
+                <div style="font-size:10px; color:#888;">Click pentru listă</div>
+            </div>
+            <div onclick="filterPeriodList('renewed')" style="cursor:pointer; text-align:center; background:rgba(255,170,0,0.1); border-radius:10px; padding:12px;" onmouseover="this.style.background='rgba(255,170,0,0.2)'" onmouseout="this.style.background='rgba(255,170,0,0.1)'">
+                <div style="font-size:28px; font-weight:bold; color:#ffaa00;">${renewed.length}</div>
+                <div style="font-size:11px; color:#ffaa00;">🔄 Reînnoite</div>
+                <div style="font-size:10px; color:#888;">Click pentru listă</div>
+            </div>
+            <div style="text-align:center; background:rgba(100,150,255,0.1); border-radius:10px; padding:12px;">
+                <div style="font-size:28px; font-weight:bold; color:#6496ff;">${entries.length}</div>
+                <div style="font-size:11px; color:#6496ff;">Intrări sală</div>
             </div>
         </div>
-        <div style="margin-top: 15px; text-align: center; padding: 10px; background: rgba(255, 140, 0, 0.1); border-radius: 8px;">
-            ${currentMonthClients.length > lastMonthClients.length ? 
-                `📈 Creștere cu ${((currentMonthClients.length - lastMonthClients.length) / (lastMonthClients.length || 1) * 100).toFixed(1)}% față de luna trecută` : 
-                currentMonthClients.length < lastMonthClients.length ?
-                `📉 Scădere cu ${((lastMonthClients.length - currentMonthClients.length) / (lastMonthClients.length || 1) * 100).toFixed(1)}% față de luna trecută` :
-                `📊 Nivel similar cu luna trecută`}
+        
+        <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px; margin-bottom:15px;">
+            <h4 style="color:#ffaa33; margin-bottom:10px;">📊 Distribuție tipuri abonament</h4>
+            ${Object.entries(byType).sort((a,b)=>b[1]-a[1]).map(([name, count]) => {
+                const pctVal = Math.round(count/allInPeriod.length*100);
+                const color = colors[name] || '#888';
+                return `
+                    <div style="margin-bottom:8px;">
+                        <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px;">
+                            <span style="color:#e0e0e0;">${name}</span>
+                            <span style="color:${color}; font-weight:bold;">${count} (${pctVal}%)</span>
+                        </div>
+                        <div style="background:rgba(255,255,255,0.1); border-radius:4px; height:8px;">
+                            <div style="width:${pctVal}%; height:100%; background:${color}; border-radius:4px;"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('') || '<p style="color:#888;text-align:center;">Nicio tranzacție</p>'}
         </div>
+        
+        <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px; margin-bottom:15px;">
+            <h4 style="color:#ffaa33; margin-bottom:10px;">Intrări zilnice în perioadă</h4>
+            <div style="display:flex; align-items:flex-end; gap:3px; height:60px; overflow-x:auto;">
+                ${dayLabels.map(d => {
+                    const count = dailyCounts[d] || 0;
+                    const h = count > 0 ? Math.round((count/maxDay)*50) : 2;
+                    const dayNum = new Date(d + 'T12:00:00').getDate();
+                    return `
+                        <div style="min-width:16px; flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;">
+                            <div style="width:100%; height:${h}px; background:${count > 0 ? '#3266ad' : 'rgba(255,255,255,0.05)'}; border-radius:2px 2px 0 0;"></div>
+                            <span style="font-size:8px; color:#666;">${dayNum}</span>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+        
+        <div id="periodClientList"></div>
     `;
+}
+
+function filterPeriodList(filter) {
+    const container = document.getElementById('periodClientList');
+    if (!container) return;
     
-    document.getElementById('customPeriodStats').innerHTML = statsHtml;
-    document.getElementById('customPeriodList').innerHTML = `
-        <h4 style="color: #ffaa33; margin-top: 15px;">📋 Lista abonamentelor (create + reînnoite)</h4>
-        <div style="max-height: 250px; overflow-y: auto;">
-            ${currentMonthClients.map(client => `
-                <div class="client-card" style="margin-bottom: 8px; cursor: pointer; border-left: 4px solid ${client._reportType === 'CREAT' ? '#00ff88' : '#ffaa33'};" onclick="showClientDetails(${client.id})">
-                    <div style="min-width: 50px;">
-                        ${client.photo ? `<img src="${client.photo}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : '<div style="width: 50px; height: 50px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>'}
-                    </div>
-                    <div style="flex: 1;">
-                        <p style="font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
-                        <p style="font-size: 11px; margin: 2px 0;">📦 ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
-                        <p style="font-size: 10px; color: ${client._reportType === 'CREAT' ? '#00ff88' : '#ffaa33'};">
-                            ${client._reportType === 'CREAT' ? '🆕 CREAT' : '🔄 REÎNNOIT'} 
-                            ${client.createdAt ? `| 📅 ${new Date(client.createdAt).toLocaleDateString('ro-RO')}` : ''}
-                        </p>
-                    </div>
-                </div>
-            `).join('')}
-            ${currentMonthClients.length === 0 ? '<p style="color: #888; text-align: center;">Nu există abonamente în luna curentă</p>' : ''}
+    if (container.dataset.filter === filter) {
+        container.innerHTML = '';
+        container.dataset.filter = '';
+        return;
+    }
+    container.dataset.filter = filter;
+    
+    let list, title, color;
+    if (filter === 'new') { list = window._periodNew; title = `🆕 Create noi (${list.length})`; color = '#00ff88'; }
+    else if (filter === 'renewed') { list = window._periodRenewed; title = `🔄 Reînnoite (${list.length})`; color = '#ffaa00'; }
+    else { list = window._periodAll; title = `📋 Toate abonamentele (${list.length})`; color = '#ffaa33'; }
+    
+    container.innerHTML = `
+        <div style="background:rgba(30,41,59,0.8); border-radius:12px; padding:15px; border:1px solid ${color}40;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h4 style="color:${color}; margin:0;">${title}</h4>
+                <button onclick="document.getElementById('periodClientList').innerHTML=''; document.getElementById('periodClientList').dataset.filter='';" style="background:transparent; border:1px solid #666; color:#888; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px;">✕</button>
+            </div>
+            <div style="max-height:250px; overflow-y:auto;">
+                ${renderComparatiuClients(list || [])}
+            </div>
         </div>
     `;
 }
 
-function compareYears() {
-    const today = new Date();
-    const currentYearStart = new Date(today.getFullYear(), 0, 1);
-    const currentYearEnd = new Date(today.getFullYear(), 11, 31);
-    currentYearEnd.setHours(23, 59, 59, 999);
-    
-    const lastYearStart = new Date(today.getFullYear() - 1, 0, 1);
-    const lastYearEnd = new Date(today.getFullYear() - 1, 11, 31);
-    lastYearEnd.setHours(23, 59, 59, 999);
-    
-    // Funcție pentru a verifica dacă un client este în perioada selectată
-    function isClientInPeriod(client, start, end) {
-        // Verifică createdAt (creare)
-        if (client.createdAt) {
-            const d = new Date(client.createdAt);
-            if (d >= start && d <= end) return true;
-        }
-        // Verifică updatedAt (reînnoire)
-        if (client.updatedAt) {
-            const d = new Date(client.updatedAt);
-            if (d >= start && d <= end) return true;
-        }
-        // Verifică startDate (început abonament)
-        if (client.startDate) {
-            const d = new Date(client.startDate);
-            if (d >= start && d <= end) return true;
-        }
-        return false;
-    }
-    
-    const currentYearClients = clients.filter(c => isClientInPeriod(c, currentYearStart, currentYearEnd));
-    const lastYearClients = clients.filter(c => isClientInPeriod(c, lastYearStart, lastYearEnd));
-    
-    // Adaugă tipuri pentru afișare
-    currentYearClients.forEach(c => {
-        if (c.updatedAt && new Date(c.updatedAt) >= currentYearStart && new Date(c.updatedAt) <= currentYearEnd) {
-            c._reportType = 'REÎNNOIT';
-        } else if (c.createdAt && new Date(c.createdAt) >= currentYearStart && new Date(c.createdAt) <= currentYearEnd) {
-            c._reportType = 'CREAT';
-        } else if (c.startDate && new Date(c.startDate) >= currentYearStart && new Date(c.startDate) <= currentYearEnd) {
-            c._reportType = 'ÎNCEPUT';
-        }
-    });
-    
-    lastYearClients.forEach(c => {
-        if (c.updatedAt && new Date(c.updatedAt) >= lastYearStart && new Date(c.updatedAt) <= lastYearEnd) {
-            c._reportType = 'REÎNNOIT';
-        } else if (c.createdAt && new Date(c.createdAt) >= lastYearStart && new Date(c.createdAt) <= lastYearEnd) {
-            c._reportType = 'CREAT';
-        } else if (c.startDate && new Date(c.startDate) >= lastYearStart && new Date(c.startDate) <= lastYearEnd) {
-            c._reportType = 'ÎNCEPUT';
-        }
-    });
-    
-    const currentYearActions = auditLog.filter(log => {
-        const logDate = new Date(log.timestamp);
-        return logDate >= currentYearStart && logDate <= currentYearEnd;
-    });
-    
-    const lastYearActions = auditLog.filter(log => {
-        const logDate = new Date(log.timestamp);
-        return logDate >= lastYearStart && logDate <= lastYearEnd;
-    });
-    
-    const statsHtml = `
-        <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: space-between;">
-            <div style="flex: 1; background: rgba(0, 255, 136, 0.1); padding: 15px; border-radius: 12px; text-align: center;">
-                <h4 style="color: #00ff88;">📅 Anul ${currentYearStart.getFullYear()}</h4>
-                <div style="font-size: 28px; font-weight: bold;">${currentYearClients.length}</div>
-                <div>Abonamente (create + reînnoite)</div>
-                <div style="font-size: 14px; margin-top: 8px;">
-                    ${currentYearClients.filter(c => c._reportType === 'CREAT').length > 0 ? `🆕 Create: ${currentYearClients.filter(c => c._reportType === 'CREAT').length}` : ''}
-                    ${currentYearClients.filter(c => c._reportType === 'REÎNNOIT').length > 0 ? ` | 🔄 Reînnoite: ${currentYearClients.filter(c => c._reportType === 'REÎNNOIT').length}` : ''}
-                </div>
-                <div style="font-size: 20px; margin-top: 10px;">${currentYearActions.length}</div>
-                <div>Acțiuni înregistrate</div>
-            </div>
-            <div style="flex: 1; background: rgba(100, 150, 255, 0.1); padding: 15px; border-radius: 12px; text-align: center;">
-                <h4 style="color: #6496ff;">📅 Anul ${lastYearStart.getFullYear()}</h4>
-                <div style="font-size: 28px; font-weight: bold;">${lastYearClients.length}</div>
-                <div>Abonamente (create + reînnoite)</div>
-                <div style="font-size: 14px; margin-top: 8px;">
-                    ${lastYearClients.filter(c => c._reportType === 'CREAT').length > 0 ? `🆕 Create: ${lastYearClients.filter(c => c._reportType === 'CREAT').length}` : ''}
-                    ${lastYearClients.filter(c => c._reportType === 'REÎNNOIT').length > 0 ? ` | 🔄 Reînnoite: ${lastYearClients.filter(c => c._reportType === 'REÎNNOIT').length}` : ''}
-                </div>
-                <div style="font-size: 20px; margin-top: 10px;">${lastYearActions.length}</div>
-                <div>Acțiuni înregistrate</div>
-            </div>
-        </div>
-        <div style="margin-top: 15px; text-align: center; padding: 10px; background: rgba(255, 140, 0, 0.1); border-radius: 8px;">
-            ${currentYearClients.length > lastYearClients.length ? 
-                `📈 Creștere cu ${((currentYearClients.length - lastYearClients.length) / (lastYearClients.length || 1) * 100).toFixed(1)}% față de anul trecut` : 
-                currentYearClients.length < lastYearClients.length ?
-                `📉 Scădere cu ${((lastYearClients.length - currentYearClients.length) / (lastYearClients.length || 1) * 100).toFixed(1)}% față de anul trecut` :
-                `📊 Nivel similar cu anul trecut`}
-        </div>
-    `;
-    
-    document.getElementById('customPeriodStats').innerHTML = statsHtml;
-    document.getElementById('customPeriodList').innerHTML = `
-        <h4 style="color: #ffaa33; margin-top: 15px;">📋 Lista abonamentelor din ${currentYearStart.getFullYear()} (create + reînnoite)</h4>
-        <div style="max-height: 250px; overflow-y: auto;">
-            ${currentYearClients.map(client => `
-                <div class="client-card" style="margin-bottom: 8px; cursor: pointer; border-left: 4px solid ${client._reportType === 'CREAT' ? '#00ff88' : '#ffaa33'};" onclick="showClientDetails(${client.id})">
-                    <div style="min-width: 50px;">
-                        ${client.photo ? `<img src="${client.photo}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : '<div style="width: 50px; height: 50px; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>'}
-                    </div>
-                    <div style="flex: 1;">
-                        <p style="font-weight: bold; margin: 0;">${client.prenume} ${client.nume}</p>
-                        <p style="font-size: 11px; margin: 2px 0;">📦 ${SUBSCRIPTIONS[client.subscription]?.name || client.subscription}</p>
-                        <p style="font-size: 10px; color: ${client._reportType === 'CREAT' ? '#00ff88' : '#ffaa33'};">
-                            ${client._reportType === 'CREAT' ? '🆕 CREAT' : '🔄 REÎNNOIT'} 
-                            ${client.createdAt ? `| 📅 ${new Date(client.createdAt).toLocaleDateString('ro-RO')}` : ''}
-                        </p>
-                    </div>
-                </div>
-            `).join('')}
-            ${currentYearClients.length === 0 ? '<p style="color: #888; text-align: center;">Nu există abonamente în anul curent</p>' : ''}
-        </div>
-    `;
-}
+window.filterPeriodList = filterPeriodList;
 
-function filterSubscriptionsReport() {
-    renderSubscriptionsCreatedReport();
-}
-
-function exportSubscriptionsReport() {
-    const period = document.getElementById('subsReportPeriod')?.value || 'today';
-    let filtered = [...clients];
+function exportPeriodCSV() {
+    const startStr = document.getElementById('periodStart')?.value;
+    const endStr = document.getElementById('periodEnd')?.value;
+    if (!startStr || !endStr) { showNotification('Selectează perioada!', 'error'); return; }
     
-    if (period === 'today') {
-        const todayStr = getTodayDate();
-        filtered = clients.filter(c => c.createdAt && c.createdAt.startsWith(todayStr));
-    } else if (period === 'week') {
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        filtered = clients.filter(c => c.createdAt && new Date(c.createdAt) >= weekAgo);
-    } else if (period === 'month') {
-        const monthAgo = new Date();
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-        filtered = clients.filter(c => c.createdAt && new Date(c.createdAt) >= monthAgo);
-    }
+    const start = new Date(startStr + 'T00:00:00');
+    const end = new Date(endStr + 'T23:59:59');
+    const created = clients.filter(c => c.createdAt && new Date(c.createdAt) >= start && new Date(c.createdAt) <= end);
     
-    const csv = [['Nume', 'Prenume', 'Abonament', 'Data creare', 'Creat de', 'Expirare'].join(',')];
-    filtered.forEach(c => {
-        csv.push([
-            `"${c.nume}"`,
-            `"${c.prenume}"`,
-            `"${SUBSCRIPTIONS[c.subscription]?.name || c.subscription}"`,
-            `"${new Date(c.createdAt).toLocaleDateString('ro-RO')}"`,
-            `"${c.createdBy || 'N/A'}"`,
-            `"${new Date(c.expiration).toLocaleDateString('ro-RO')}"`
-        ].join(','));
+    const csv = [['Nume','Prenume','Abonament','Data creare','Creat de','Expirare'].join(',')];
+    created.forEach(c => {
+        csv.push([`"${c.nume}"`,`"${c.prenume}"`,`"${SUBSCRIPTIONS[c.subscription]?.name || c.subscription}"`,`"${new Date(c.createdAt).toLocaleDateString('ro-RO')}"`,`"${c.createdBy||'N/A'}"`,`"${new Date(c.expiration).toLocaleDateString('ro-RO')}"`].join(','));
     });
     
     const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `abonamente_${period}_${getTodayDate()}.csv`;
+    a.download = `raport_${startStr}_${endStr}.csv`;
     a.click();
-    showNotification('Raport exportat!', 'success');
+    showNotification('CSV exportat!', 'success');
 }
 
-function exportFullReport() {
-    const reportData = {
-        generated: new Date().toISOString(),
-        generatedBy: currentUser,
-        totalClients: clients.length,
-        activeSubscriptions: clients.filter(c => checkClientAccess(c).allowed).length,
-        clientsInGym: clients.filter(c => c.isInGym === true).length,
-        subscriptionsByType: Object.keys(SUBSCRIPTIONS).reduce((acc, key) => {
-            acc[SUBSCRIPTIONS[key].name] = clients.filter(c => c.subscription === key).length;
-            return acc;
-        }, {}),
-        recentAuditLog: auditLog.slice(-50)
-    };
+// ════════ TAB 6 — ACTIVITATE UTILIZATORI ════════
+function renderTabActivitate() {
+    const today = getTodayDate();
+    const usersList = [...new Set(auditLog.map(l => l.user))].filter(u => u !== 'GUEST');
     
-    const dataStr = JSON.stringify(reportData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `raport_complet_${getTodayDate()}.json`;
-    link.click();
-    addToAuditLog('Export raport complet', 'Raport complet exportat');
-    showNotification('Raport complet exportat!', 'success');
+    return `
+        <div style="background:rgba(30,41,59,0.6); border-radius:12px; padding:15px; margin-bottom:15px;">
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:15px;">
+                <div>
+                    <label style="font-size:11px; color:#888; display:block; margin-bottom:4px;">Ziua:</label>
+                    <input type="date" id="activityDate" value="${today}" style="padding:8px; border-radius:8px; border:1px solid #ffaa33; background:rgba(255,170,0,0.1); color:#e0e0e0;">
+                </div>
+                <div>
+                    <label style="font-size:11px; color:#888; display:block; margin-bottom:4px;">Utilizator:</label>
+                    <select id="activityUser" style="padding:8px; border-radius:8px; border:1px solid #ffaa33; background:rgba(20,30,50,0.9); color:#e0e0e0;">
+                        <option value="">Toți utilizatorii</option>
+                        ${usersList.map(u => `<option value="${u}">${u}</option>`).join('')}
+                    </select>
+                </div>
+                <button onclick="generateActivityReport()" style="padding:8px 16px; background:#ff8c00; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">🔍 Vezi activitate</button>
+            </div>
+            <div id="activityResults">
+                <p style="color:#888; text-align:center;">Selectează ziua și utilizatorul</p>
+            </div>
+        </div>
+    `;
 }
+
+function generateActivityReport() {
+    const dateStr = document.getElementById('activityDate')?.value;
+    const selectedUser = document.getElementById('activityUser')?.value;
+    if (!dateStr) return;
+    
+    let filtered = auditLog.filter(l => l.timestamp.startsWith(dateStr));
+    if (selectedUser) filtered = filtered.filter(l => l.user === selectedUser);
+    
+    filtered = filtered.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
+    // Grupează pe utilizator
+    const byUser = {};
+    filtered.forEach(l => {
+        if (!byUser[l.user]) byUser[l.user] = [];
+        byUser[l.user].push(l);
+    });
+    
+    // Abonamente create în ziua respectivă
+    const createdThatDay = clients.filter(c => c.createdAt && c.createdAt.startsWith(dateStr));
+    const renewedThatDay = clients.filter(c => c.updatedAt && c.updatedAt.startsWith(dateStr));
+    
+    if (filtered.length === 0) {
+        document.getElementById('activityResults').innerHTML = '<p style="color:#888; text-align:center;">Nicio activitate înregistrată pentru ziua și utilizatorul selectat</p>';
+        return;
+    }
+    
+    document.getElementById('activityResults').innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:15px;">
+            <div style="text-align:center; background:rgba(100,150,255,0.1); border-radius:10px; padding:12px;">
+                <div style="font-size:24px; font-weight:bold; color:#6496ff;">${filtered.length}</div>
+                <div style="font-size:11px; color:#6496ff;">Acțiuni totale</div>
+            </div>
+            <div onclick="toggleActivitySection('created-${dateStr}')" style="cursor:pointer; text-align:center; background:rgba(0,255,136,0.1); border-radius:10px; padding:12px;" onmouseover="this.style.background='rgba(0,255,136,0.2)'" onmouseout="this.style.background='rgba(0,255,136,0.1)'">
+                <div style="font-size:24px; font-weight:bold; color:#00ff88;">${createdThatDay.length}</div>
+                <div style="font-size:11px; color:#00ff88;">Abonamente create</div>
+                <div style="font-size:10px; color:#888;">Click pentru listă</div>
+            </div>
+            <div onclick="toggleActivitySection('renewed-${dateStr}')" style="cursor:pointer; text-align:center; background:rgba(255,170,0,0.1); border-radius:10px; padding:12px;" onmouseover="this.style.background='rgba(255,170,0,0.2)'" onmouseout="this.style.background='rgba(255,170,0,0.1)'">
+                <div style="font-size:24px; font-weight:bold; color:#ffaa00;">${renewedThatDay.length}</div>
+                <div style="font-size:11px; color:#ffaa00;">Reînnoite</div>
+                <div style="font-size:10px; color:#888;">Click pentru listă</div>
+            </div>
+        </div>
+        
+        <div id="activity-created-${dateStr}" style="display:none; margin-bottom:15px;"></div>
+        <div id="activity-renewed-${dateStr}" style="display:none; margin-bottom:15px;"></div>
+        
+        ${Object.entries(byUser).map(([user, logs]) => {
+            const userRole = logs[0]?.userRole || '';
+            const roleColor = userRole === 'admin' ? '#ff8c00' : userRole === 'manager' ? '#6496ff' : '#00ff88';
+            
+            const actionSummary = {};
+            logs.forEach(l => {
+                actionSummary[l.action] = (actionSummary[l.action] || 0) + 1;
+            });
+            
+            return `
+                <div style="background:rgba(20,30,50,0.8); border-radius:12px; padding:15px; margin-bottom:10px; border-left:4px solid ${roleColor};">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="background:${roleColor}; color:black; padding:3px 10px; border-radius:6px; font-size:11px; font-weight:bold;">${userRole.toUpperCase()}</span>
+                            <strong style="color:#fff; font-size:15px;">👤 ${user}</strong>
+                        </div>
+                        <span style="color:#888; font-size:12px;">${logs.length} acțiuni</span>
+                    </div>
+                    
+                    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">
+                        ${Object.entries(actionSummary).map(([action, count]) => `
+                            <span style="background:rgba(255,255,255,0.08); padding:3px 10px; border-radius:15px; font-size:11px; color:#ccc;">
+                                ${action}: <strong style="color:#ffaa33;">${count}</strong>
+                            </span>
+                        `).join('')}
+                    </div>
+                    
+                    <div style="max-height:200px; overflow-y:auto;">
+                        ${logs.map(l => `
+                            <div style="display:flex; gap:10px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:12px;">
+                                <span style="color:#ffaa33; min-width:55px; flex-shrink:0;">${new Date(l.timestamp).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})}</span>
+                                <span style="color:#fff;">${l.action}</span>
+                                ${l.details ? `<span style="color:#888; font-size:11px;">— ${l.details.substring(0,60)}${l.details.length>60?'...':''}</span>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }).join('')}
+    `;
+    
+    window._activityCreated = createdThatDay;
+    window._activityRenewed = renewedThatDay;
+}
+
+function toggleActivitySection(sectionId) {
+    const el = document.getElementById(`activity-${sectionId}`);
+    if (!el) return;
+    
+    if (el.style.display !== 'none') {
+        el.style.display = 'none';
+        return;
+    }
+    
+    const isCreated = sectionId.startsWith('created');
+    const list = isCreated ? window._activityCreated : window._activityRenewed;
+    const color = isCreated ? '#00ff88' : '#ffaa00';
+    const title = isCreated ? 'Abonamente create' : 'Abonamente reînnoite';
+    
+    el.style.display = 'block';
+    el.innerHTML = `
+        <div style="background:rgba(30,41,59,0.8); border-radius:10px; padding:12px; border:1px solid ${color}40;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                <h4 style="color:${color}; margin:0;">${title} (${list.length})</h4>
+                <button onclick="document.getElementById('activity-${sectionId}').style.display='none'" style="background:transparent; border:1px solid #666; color:#888; padding:2px 8px; border-radius:5px; cursor:pointer; font-size:11px;">✕</button>
+            </div>
+            ${list.map(c => `
+                <div onclick="closeModal(); setTimeout(()=>showClientDetails(${c.id}),100);" style="display:flex; align-items:center; gap:10px; padding:7px; margin-bottom:5px; background:rgba(255,255,255,0.03); border-radius:8px; cursor:pointer;">
+                    ${c.photo ? `<img src="${c.photo}" style="width:35px;height:35px;border-radius:7px;object-fit:cover;">` : '<div style="width:35px;height:35px;background:#333;border-radius:7px;display:flex;align-items:center;justify-content:center;">👤</div>'}
+                    <div style="flex:1;">
+                        <p style="margin:0; font-weight:bold; font-size:13px;">${c.prenume} ${c.nume}</p>
+                        <p style="margin:0; font-size:11px; color:#888;">📦 ${SUBSCRIPTIONS[c.subscription]?.name || c.subscription} | 👤 ${c.createdBy||'N/A'}</p>
+                    </div>
+                    <span style="font-size:11px; color:${color};">${isCreated ? new Date(c.createdAt).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}) : new Date(c.updatedAt).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})}</span>
+                </div>
+            `).join('') || `<p style="color:#888; text-align:center;">Niciun abonament</p>`}
+        </div>
+    `;
+}
+
+window.toggleReportList = toggleReportList;
+window.generatePeriodReport = generatePeriodReport;
+window.exportPeriodCSV = exportPeriodCSV;
+window.generateActivityReport = generateActivityReport;
+window.toggleActivitySection = toggleActivitySection;
+
 
 // ════════════════════════════════════════════════════════════════════
 // 🎴 CLIENT CARDS DISPLAY - CARDURI MĂRITE
@@ -2024,66 +2160,74 @@ function initClientCards() {
         return;
     }
 
-    // INTRARE
-    const entryClients = clients.filter(c => c.nfcScansToday === 1 || c.nfcScansToday >= 3);
+    // INTRARE - ultimul client cu scanare impară (1,3,5... = intrare)
+    const entryClients = clients.filter(c => 
+         c.nfcScansToday >= 1 && 
+         c.lastScanTimestamp &&
+         c.nfcScansToday % 2 === 1
+     );
     const sortedEntry = [...entryClients].sort((a, b) => (b.lastScanTimestamp || 0) - (a.lastScanTimestamp || 0));
     const latestEntry = sortedEntry[0];
-    
+
     const entryList = document.getElementById('entryList');
-    if (!latestEntry) {
-        entryList.innerHTML = '<p style="color: #888; text-align: center; padding: 40px;">⏳ Niciun client la intrare</p>';
+      if (!latestEntry) {
+         entryList.innerHTML = '<p style="color: #888; text-align: center; padding: 40px;">⏳ Niciun client la intrare</p>';
     } else {
-        const daysLeft = getClientDaysLeft(latestEntry);
-        const expDate = new Date(latestEntry.expiration).toLocaleDateString('ro-RO');
-        const isReEntry = latestEntry.nfcScansToday >= 3;
+    const daysLeft = getClientDaysLeft(latestEntry);
+    const expDate = new Date(latestEntry.expiration).toLocaleDateString('ro-RO');
+    const isReEntry = latestEntry.nfcScansToday >= 3;
         entryList.innerHTML = `
-            <div class="client-card-large ${isReEntry ? 'warning' : 'active'}" onclick="onClientClick(${latestEntry.id}, true)" style="cursor: pointer; margin-bottom: 12px; padding: 20px; display: flex; gap: 20px; align-items: center;">
-                <div style="min-width: 100px;">
-                    ${latestEntry.photo ? `<img src="${latestEntry.photo}" style="width: 100px; height: 100px; border-radius: 15px; border: 3px solid ${isReEntry ? '#ffaa00' : '#00ff88'}; object-fit: cover;">` : '<div style="width: 100px; height: 100px; background: linear-gradient(145deg, #2c3e66, #1a2a4a); border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 48px;">👤</div>'}
-                </div>
-                <div style="flex: 1;">
-                    <p style="font-weight: bold; font-size: 22px; margin: 0; color: #fff;">${latestEntry.prenume} ${latestEntry.nume}</p>
-                    <p style="font-size: 14px; color: ${isReEntry ? '#ffaa00' : '#00ff88'}; margin: 8px 0; font-weight: bold;">${isReEntry ? '⚠️ REINTRARE' : '✅ INTRARE'}</p>
-                    <p style="font-size: 13px; color: #ffaa33; margin: 5px 0;">📅 Expiră: ${expDate} (${daysLeft} zile)</p>
-                    <p style="font-size: 12px; color: #888; margin: 3px 0;">🏷️ Tag: ${latestEntry.tag || 'N/A'}</p>
-                </div>
-            </div>
-        `;
+           <div class="client-card-large ${isReEntry ? 'warning' : 'active'}" onclick="onClientClick(${latestEntry.id}, true)" style="cursor: pointer; margin-bottom: 12px; padding: 20px; display: flex; gap: 20px; align-items: center;">
+               <div style="min-width: 100px;">
+                  ${latestEntry.photo ? `<img src="${latestEntry.photo}" style="width: 100px; height: 100px; border-radius: 15px; border: 3px solid ${isReEntry ? '#ffaa00' : '#00ff88'}; object-fit: cover;">` : '<div style="width: 100px; height: 100px; background: linear-gradient(145deg, #2c3e66, #1a2a4a); border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 48px;">👤</div>'}
+               </div>
+               <div style="flex: 1;">
+                  <p style="font-weight: bold; font-size: 22px; margin: 0; color: #fff;">${latestEntry.prenume} ${latestEntry.nume}</p>
+                  <p style="font-size: 14px; color: ${isReEntry ? '#ffaa00' : '#00ff88'}; margin: 8px 0; font-weight: bold;">${isReEntry ? '⚠️ REINTRARE' : '✅ INTRARE'}</p>
+                  <p style="font-size: 13px; color: #ffaa33; margin: 5px 0;">📅 Expiră: ${expDate} (${daysLeft} zile)</p>
+                  <p style="font-size: 12px; color: #888; margin: 3px 0;">🏷️ Tag: ${latestEntry.tag || 'N/A'}</p>
+               </div>
+          </div>
+     `;
     }
 
-    // IEȘIRE
-    const exitClients = clients.filter(c => c.nfcScansToday === 2 && c.isInGym === false);
+// IEȘIRE - ultimul client cu scanare pară (2,4,6... = ieșire)
+    const exitClients = clients.filter(c => 
+      c.nfcScansToday >= 2 && 
+      c.lastScanTimestamp &&
+      c.nfcScansToday % 2 === 0
+    );
     const sortedExit = [...exitClients].sort((a, b) => (b.lastScanTimestamp || 0) - (a.lastScanTimestamp || 0));
     const latestExit = sortedExit[0];
-    
+
     const exitList = document.getElementById('exitList');
-    if (!latestExit) {
-        exitList.innerHTML = '<p style="color: #888; text-align: center; padding: 40px;">⏳ Niciun client la ieșire</p>';
-    } else {
-        const daysLeft = getClientDaysLeft(latestExit);
-        const expDate = new Date(latestExit.expiration).toLocaleDateString('ro-RO');
+       if (!latestExit) {
+          exitList.innerHTML = '<p style="color: #888; text-align: center; padding: 40px;">⏳ Niciun client la ieșire</p>';
+      } else {
+    const daysLeft = getClientDaysLeft(latestExit);
+    const expDate = new Date(latestExit.expiration).toLocaleDateString('ro-RO');
         exitList.innerHTML = `
-            <div class="client-card-large" onclick="onClientClick(${latestExit.id}, false)" style="cursor: pointer; margin-bottom: 12px; padding: 20px; display: flex; gap: 20px; align-items: center; background: linear-gradient(145deg, rgba(45, 47, 59, 0.9), rgba(30, 41, 59, 0.9)); border-left: 8px solid #6496ff; border-radius: 16px;">
-                <div style="min-width: 100px;">
-                    ${latestExit.photo ? `<img src="${latestExit.photo}" style="width: 100px; height: 100px; border-radius: 15px; border: 3px solid #6496ff; object-fit: cover;">` : '<div style="width: 100px; height: 100px; background: linear-gradient(145deg, #2c3e66, #1a2a4a); border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 48px;">👤</div>'}
-                </div>
-                <div style="flex: 1;">
-                    <p style="font-weight: bold; font-size: 22px; margin: 0; color: #fff;">${latestExit.prenume} ${latestExit.nume}</p>
-                    <p style="font-size: 14px; color: #6496ff; margin: 8px 0; font-weight: bold;">❌ IEȘIRE</p>
-                    <p style="font-size: 13px; color: #ffaa33; margin: 5px 0;">📅 Expiră: ${expDate} (${daysLeft} zile)</p>
-                    <p style="font-size: 12px; color: #888; margin: 3px 0;">🏷️ Tag: ${latestExit.tag || 'N/A'}</p>
-                </div>
+        <div class="client-card-large" onclick="onClientClick(${latestExit.id}, false)" style="cursor: pointer; margin-bottom: 12px; padding: 20px; display: flex; gap: 20px; align-items: center; background: linear-gradient(145deg, rgba(45, 47, 59, 0.9), rgba(30, 41, 59, 0.9)); border-left: 8px solid #6496ff; border-radius: 16px;">
+            <div style="min-width: 100px;">
+                ${latestExit.photo ? `<img src="${latestExit.photo}" style="width: 100px; height: 100px; border-radius: 15px; border: 3px solid #6496ff; object-fit: cover;">` : '<div style="width: 100px; height: 100px; background: linear-gradient(145deg, #2c3e66, #1a2a4a); border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 48px;">👤</div>'}
             </div>
-        `;
+            <div style="flex: 1;">
+                <p style="font-weight: bold; font-size: 22px; margin: 0; color: #fff;">${latestExit.prenume} ${latestExit.nume}</p>
+                <p style="font-size: 14px; color: #6496ff; margin: 8px 0; font-weight: bold;">❌ IEȘIRE</p>
+                <p style="font-size: 13px; color: #ffaa33; margin: 5px 0;">📅 Expiră: ${expDate} (${daysLeft} zile)</p>
+                <p style="font-size: 12px; color: #888; margin: 3px 0;">🏷️ Tag: ${latestExit.tag || 'N/A'}</p>
+            </div>
+        </div>
+      `;
     }
 
     // CLIENȚI ÎN SALĂ - sortează după ora intrării
     const inGymClients = clients.filter(c => c.isInGym === true && c.nfcScansToday === 1);
     const sortedGymClients = [...inGymClients].sort((a, b) => {
-        const timeA = clientCheckIns[a.id] ? new Date(clientCheckIns[a.id]).getTime() : 0;
-        const timeB = clientCheckIns[b.id] ? new Date(clientCheckIns[b.id]).getTime() : 0;
-        return timeB - timeA; // Cel mai recent primul
-    });
+    const timeA = a.lastScanTimestamp || 0;
+    const timeB = b.lastScanTimestamp || 0;
+    return timeB - timeA; // Cel mai recent primul
+   });
     
     const gymList = document.getElementById('gymList');
     if (sortedGymClients.length === 0) {
@@ -2109,6 +2253,48 @@ function initClientCards() {
     }
 
     document.getElementById('gymCount').textContent = sortedGymClients.length;
+    
+    updateStatsCards();
+}
+
+function updateStatsCards() {
+    const todayStr = getTodayDate();
+    const todayEntries = auditLog.filter(l => 
+        l.timestamp.startsWith(todayStr) && l.action.includes('Intrare')
+    ).length;
+
+    const todayEl = document.getElementById('statTodayEntries');
+    if (todayEl) todayEl.textContent = todayEntries;
+
+    const weekChart = document.getElementById('weekChart');
+    if (weekChart) {
+        const dayCounts = [1,2,3,4,5,6,0].map(dow => {
+            const d = new Date();
+            const diff = (d.getDay() - dow + 7) % 7;
+            const dayDate = new Date(d);
+            dayDate.setDate(d.getDate() - diff);
+            const dayStr = dayDate.toISOString().split('T')[0];
+            return auditLog.filter(l => 
+                l.timestamp.startsWith(dayStr) && l.action.includes('Intrare')
+            ).length;
+        });
+        
+        const maxCount = Math.max(...dayCounts, 1);
+        const todayIndex = [1,2,3,4,5,6,0].indexOf(new Date().getDay());
+        
+        weekChart.innerHTML = dayCounts.map((count, i) => {
+            const height = Math.max(Math.round((count / maxCount) * 30), count > 0 ? 3 : 1);
+            const isToday = i === todayIndex;
+            const color = isToday ? '#ffaa00' : 'rgba(255,170,0,0.4)';
+            return `
+                <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:35px;">
+                    ${count > 0 ? `<span style="font-size:8px; color:#ffaa00;">${count}</span>` : ''}
+                    <div style="width:100%; height:${height}px; background:${color}; border-radius:2px 2px 0 0;"></div>
+                </div>
+            `;
+        }).join('');
+    }
+
 }
 
   function getClientDaysLeft(client) {
@@ -2135,6 +2321,45 @@ function onClientClick(clientId, isAllowed) {
         showClientDetails(client);
     }
 }
+    // Update carduri statistici
+    const todayStr = getTodayDate();
+    const todayEntries = auditLog.filter(l => 
+        l.timestamp.startsWith(todayStr) && l.action.includes('Intrare')
+    ).length;
+
+    const todayEl = document.getElementById('statTodayEntries');
+    if (todayEl) todayEl.textContent = todayEntries;
+
+    // Grafic săptămânal - Lu=1, Ma=2, Mi=3, Jo=4, Vi=5, Sâ=6, Du=0
+    const weekChart = document.getElementById('weekChart');
+    if (weekChart) {
+        const dayCounts = [1,2,3,4,5,6,0].map(dow => {
+            const d = new Date();
+            const diff = (d.getDay() - dow + 7) % 7;
+            const dayDate = new Date(d);
+            dayDate.setDate(d.getDate() - diff);
+            const dayStr = dayDate.toISOString().split('T')[0];
+            return auditLog.filter(l => 
+                l.timestamp.startsWith(dayStr) && l.action.includes('Intrare')
+            ).length;
+        });
+        
+        const maxCount = Math.max(...dayCounts, 1);
+        const today = new Date().getDay();
+        const todayIndex = [1,2,3,4,5,6,0].indexOf(today);
+        
+        weekChart.innerHTML = dayCounts.map((count, i) => {
+            const height = Math.max(Math.round((count / maxCount) * 30), count > 0 ? 3 : 1);
+            const isToday = i === todayIndex;
+            const color = isToday ? '#ffaa00' : 'rgba(255,170,0,0.4)';
+            return `
+                <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:35px;">
+                    ${count > 0 ? `<span style="font-size:8px; color:#ffaa00;">${count}</span>` : ''}
+                    <div style="width:100%; height:${height}px; background:${color}; border-radius:2px 2px 0 0;"></div>
+                </div>
+            `;
+        }).join('');
+    }
 
 // ════════════════════════════════════════════════════════════════════
 // ✅ CHECK IN
@@ -2419,6 +2644,8 @@ document.addEventListener('DOMContentLoaded', () => {
         resetDailyUsageIfNeeded();
         initClientCards();
     }, 60000);
+
+    setTimeout(() => checkAndDoAutoBackup(), 3000);
     
     console.log('✅ GYM CORE SYSTEM v6.0 Ready!');
     console.log('Demo: admin/1234 | manager/1234 | staff/1234');
@@ -2454,7 +2681,7 @@ function scanTagForAdd() {
 }
 
 function reconnectNFC() {
-    console.log('🔄 Încercare reconectare NFC...');
+    //console.log('🔄 Încercare reconectare NFC...');
     const nfcStatusText = document.getElementById('nfc-status-text');
     const reconnectBtn = document.getElementById('nfc-reconnect-btn');
     
@@ -2504,15 +2731,7 @@ function reconnectNFC() {
     window.nfcSocket = newSocket;
 }
 
-setInterval(() => {
-    if (window.nfcSocket && window.nfcSocket.readyState !== WebSocket.OPEN) {
-        const nfcStatusText = document.getElementById('nfc-status-text');
-        if (nfcStatusText && nfcStatusText.innerHTML.includes('Online')) {
-            nfcStatusText.innerHTML = '🟡 NFC Standby';
-            nfcStatusText.style.color = '#ffaa00';
-        }
-    }
-}, 5000);
+
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -3172,7 +3391,7 @@ function confirmRenewal() {
     originalClient.subscription = newSubType;
     originalClient.startDate = startDateStr; // folosește string-ul direct din input, fără conversie
     originalClient.expiration = new Date(startDateStr + 'T12:00:00');
-    originalClient.expiration.setDate(originalClient.expiration.getDate() + days);
+    originalClient.expiration.setDate(originalClient.expiration.getDate() + days -1);
     originalClient.expiration = originalClient.expiration.toISOString().split('T')[0];
     originalClient.duration = days;
     
@@ -3248,4 +3467,241 @@ function getDaysLeft(expiration) {
     const daysLeft = Math.floor(timeDiff / (1000 * 60 * 60 * 24)) + 1;
     
     return daysLeft <= 0 ? 0 : daysLeft;
+}
+
+function getMonthPayments(monthKey) {
+    const all = clients.filter(c => {
+        const isNew = c.startDate && c.startDate.startsWith(monthKey) && 
+                      c.createdAt && c.createdAt.startsWith(monthKey);
+        
+        const isRenewed = c.startDate && c.startDate.startsWith(monthKey) && 
+                          c.createdAt && !c.createdAt.startsWith(monthKey);
+        
+        const isRenewedByUpdate = c.updatedAt && c.updatedAt.startsWith(monthKey) &&
+                                   c.createdAt && !c.createdAt.startsWith(monthKey);
+        
+        return isNew || isRenewed || isRenewedByUpdate;
+    });
+    
+    const createdNew = all.filter(c => 
+        c.createdAt && c.createdAt.startsWith(monthKey)
+    );
+    
+    const renewed = all.filter(c => 
+        c.createdAt && !c.createdAt.startsWith(monthKey)
+    );
+    
+    const byType = {};
+    all.forEach(c => {
+        const name = SUBSCRIPTIONS[c.subscription]?.name || c.subscription || 'Necunoscut';
+        byType[name] = (byType[name] || 0) + 1;
+    });
+    
+    return {
+        total: all.length,
+        created: createdNew.length,
+        renewed: renewed.length,
+        byType,
+        clients: all
+    };
+}
+
+window.getMonthPayments = getMonthPayments;
+
+// ════════════════════════════════════════════════════════════════════
+// 💾 BACKUP AUTOMAT ZILNIC
+// ════════════════════════════════════════════════════════════════════
+
+function checkAndDoAutoBackup() {
+    const lastBackup = localStorage.getItem('lastAutoBackup');
+    const today = getTodayDate();
+    
+    if (lastBackup === today) return; // Deja s-a făcut azi
+    
+    // Calculează câte zile au trecut de la ultimul backup
+    const daysSinceBackup = lastBackup ? 
+        Math.floor((new Date(today) - new Date(lastBackup)) / (1000 * 60 * 60 * 24)) : 999;
+    
+    // Fă backup automat
+    doAutoBackup();
+    
+    // Arată avertisment dacă nu s-a făcut backup de 2+ zile
+    if (daysSinceBackup >= 2) {
+        showBackupWarning(daysSinceBackup);
+    }
+}
+
+function doAutoBackup() {
+    try {
+        const today = getTodayDate();
+        
+        const backupData = {
+            backupDate: new Date().toISOString(),
+            version: '6.0',
+            clients: clients,
+            users: users,
+            auditLog: auditLog.slice(-500), // ultimele 500 intrări
+            clientHistory: clientHistory
+        };
+        
+        const dataStr = JSON.stringify(backupData, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `gym_backup_${today}.json`;
+        
+        // Descarcă silențios
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        // Salvează data ultimului backup
+        localStorage.setItem('lastAutoBackup', today);
+        localStorage.setItem('lastAutoBackupSize', (dataStr.length / 1024).toFixed(1));
+        
+        console.log(`✅ Backup automat făcut: gym_backup_${today}.json`);
+        
+    } catch (err) {
+        console.error('❌ Eroare backup automat:', err);
+    }
+}
+
+function showBackupWarning(days) {
+    const warning = document.createElement('div');
+    warning.id = 'backupWarning';
+    warning.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(135deg, #ff4444, #cc0000);
+        color: white;
+        padding: 15px 20px;
+        text-align: center;
+        z-index: 99999;
+        font-weight: bold;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 15px;
+        box-shadow: 0 4px 20px rgba(255,0,0,0.4);
+    `;
+    warning.innerHTML = `
+        <span>⚠️ ATENȚIE: Nu s-a făcut backup de ${days} zile! Datele pot fi pierdute!</span>
+        <button onclick="doManualBackup()" style="
+            background: white;
+            color: #cc0000;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+        ">💾 Fă Backup Acum</button>
+        <button onclick="document.getElementById('backupWarning').remove()" style="
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid white;
+            padding: 8px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+        ">✕ Închide</button>
+    `;
+    document.body.appendChild(warning);
+}
+
+function doManualBackup() {
+    doAutoBackup();
+    const warning = document.getElementById('backupWarning');
+    if (warning) warning.remove();
+    showNotification('✅ Backup salvat cu succes!', 'success');
+}
+
+function getStorageUsage() {
+    let total = 0;
+    for (let key in localStorage) {
+        if (localStorage.hasOwnProperty(key)) {
+            total += localStorage[key].length + key.length;
+        }
+    }
+    return (total / 1024).toFixed(1); // KB
+}
+
+function showStorageIndicator() {
+    const usedKB = parseFloat(getStorageUsage());
+    const usedMB = (usedKB / 1024).toFixed(2);
+    const percentUsed = ((usedKB / 1024) / 5 * 100).toFixed(1);
+    const lastBackup = localStorage.getItem('lastAutoBackup') || 'Niciodată';
+    
+    let color = '#00ff88';
+    let status = '✅ OK';
+    if (percentUsed > 60) { color = '#ffaa00'; status = '⚠️ Atenție'; }
+    if (percentUsed > 80) { color = '#ff6b6b'; status = '🔴 Critic'; }
+    
+    const indicator = document.getElementById('storageIndicator');
+    if (indicator) {
+        indicator.innerHTML = `
+            <div style="padding: 15px; background: rgba(30,41,59,0.9); border-radius: 12px;">
+                <h4 style="color: #ffaa33; margin-bottom: 15px;">💾 Spațiu localStorage</h4>
+                <div style="background: rgba(255,255,255,0.1); border-radius: 10px; height: 20px; margin-bottom: 10px; overflow: hidden;">
+                    <div style="width: ${percentUsed}%; height: 100%; background: ${color}; border-radius: 10px; transition: width 0.3s;"></div>
+                </div>
+                <p style="color: ${color}; margin: 5px 0;">${status} — ${usedMB}MB din 5MB (${percentUsed}%)</p>
+                <p style="color: #888; font-size: 12px; margin: 5px 0;">📅 Ultimul backup: ${lastBackup}</p>
+                <p style="color: #888; font-size: 12px; margin: 5px 0;">👥 Clienți: ${clients.length}</p>
+                <button onclick="doManualBackup()" style="
+                    width: 100%;
+                    padding: 10px;
+                    background: #00ff88;
+                    color: black;
+                    border: none;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: bold;
+                    margin-top: 10px;
+                ">💾 Backup Manual Acum</button>
+            </div>
+        `;
+    }
+}
+
+function restoreFromBackup(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const backup = JSON.parse(e.target.result);
+            
+            // Verifică dacă e un backup valid
+            if (!backup.clients || !backup.version) {
+                showNotification('❌ Fișier backup invalid!', 'error');
+                return;
+            }
+            
+            const backupDate = new Date(backup.backupDate).toLocaleDateString('ro-RO');
+            
+            if (confirm(`Restaurezi backup din ${backupDate}?\n${backup.clients.length} clienți vor fi restaurați.\nDatele curente vor fi înlocuite!`)) {
+                clients = backup.clients;
+                if (backup.users) users = backup.users;
+                if (backup.auditLog) auditLog = backup.auditLog;
+                if (backup.clientHistory) clientHistory = backup.clientHistory;
+                
+                saveClientsToStorage();
+                saveUsers();
+                saveAuditLog();
+                saveClientHistory();
+                
+                addToAuditLog('Restaurare backup', `Backup din ${backupDate} - ${clients.length} clienți`);
+                showNotification(`✅ Backup restaurat! ${clients.length} clienți restaurați.`, 'success');
+                closeModal();
+                initClientCards();
+            }
+        } catch (err) {
+            showNotification('❌ Eroare la restaurare: ' + err.message, 'error');
+        }
+    };
+    reader.readAsText(file);
 }
